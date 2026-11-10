@@ -62,6 +62,12 @@ The names include LiveLite, MpcEsntl, Hybrid 3, ProTools, ScalePad and Generic. 
 
 This makes factory preset tables a credible major flash-budget opportunity for a *new* firmware design. It does not demonstrate a patchable free area within the factory program.
 
+### Redundancy check: factory preset banks
+
+A byte-by-byte comparison of the corresponding 25 records (1,546 bytes per record, 38,650 bytes per bank) found **32,039 matching bytes of 38,650 (82.90%)** across the two banks. Three entries are byte-identical, including Battery4, ScalePad and Generic.
+
+As an *offline compressibility experiment only* (Python zlib level 9), the combined **77,300 bytes compressed to 9,099 bytes**. Compressing individual records separately produced 18,554 bytes combined. This is **not an implementable flash-footprint measurement**: decompression code, indexing, buffer allocation, latency and integrity controls cost additional memory and CPU time. But it shows the factory mapping tables are sparse/repetitive; a clean firmware can store factory-like presets much more compactly, or omit unused mappings entirely. Do **not** treat these bytes as free space in the shipped firmware.
+
 ## Model compatibility warning
 
 Akai's [firmware support page](https://support.akaipro.com/en/support/solutions/articles/69000831517-akai-pro-mpk249-and-mpk261-updating-firmware-for-m1-compatibility) inconsistently mentions MPK225 but titles the update MPK249/261. Akai's [macOS compatibility table](https://support.akaipro.com/en/support/solutions/articles/69000824929-akai-pro-macos-13-ventura-compatibility) specifically says MPK249/261 need firmware v1.02 for Apple Silicon, while MPK225 is already listed compatible. The supplied ZIP contains only an MPK249/261-named application image with `0x24` SysEx target. **Do not send this firmware/update-mode payload to an MPK225.**
