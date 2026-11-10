@@ -66,6 +66,12 @@ This makes factory preset tables a credible major flash-budget opportunity for a
 
 Akai's [firmware support page](https://support.akaipro.com/en/support/solutions/articles/69000831517-akai-pro-mpk249-and-mpk261-updating-firmware-for-m1-compatibility) inconsistently mentions MPK225 but titles the update MPK249/261. Akai's [macOS compatibility table](https://support.akaipro.com/en/support/solutions/articles/69000824929-akai-pro-macos-13-ventura-compatibility) specifically says MPK249/261 need firmware v1.02 for Apple Silicon, while MPK225 is already listed compatible. The supplied ZIP contains only an MPK249/261-named application image with `0x24` SysEx target. **Do not send this firmware/update-mode payload to an MPK225.**
 
+## Further disassembly: hardware variant selection and flash granularity
+
+The function at `0800D850` reads GPIO inputs using a shared helper at `08008E46`, examining a bit on GPIOE and two bits on GPIOD. It returns one of **four configuration codes (1–4)**. At `08008A2C`, the firmware uses that value to select one of its two 25-record factory preset groups, or to skip initializing them. **This is evidence of runtime hardware-variant configuration**, not proof of which model maps to which code or that this update image is safe on an MPK225.
+
+ST's [RM0008 reference manual](https://www.st.com/resource/en/reference_manual/rm0008-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-arm-based-32-bit-mcus-stmicroelectronics.pdf) specifies **2 KiB flash erase pages** for high-density STM32F103 parts. The factory's 1,546-byte preset records do not align to those pages, so overwriting an individual preset requires careful preservation of adjacent data. A custom pattern/song store should instead use page-aligned records or a tested transactional scheme; this is especially important for power-loss recovery and flash endurance.
+
 ## Engineering consequence
 
 For our **future MPK225 custom firmware**, a small chord/voice-leading engine is very plausible given the physical MCU. The main constraints are proving the MPK225's own flash layout, bootloader/recovery, keybed/pad handling, and allocating persistent data without destroying factory presets. Replacing redundant preset tables, and using a compact preset format, could make substantially more room for sophisticated chord logic and sequencer storage than the current OS exposes.
