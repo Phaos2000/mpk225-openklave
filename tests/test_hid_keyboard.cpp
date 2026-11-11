@@ -18,14 +18,14 @@ int main() {
     assert(state.report().keys[2]==7 && state.report().keys[5]==0);
     assert(state.press(10));
     assert(state.report().keys[5]==10);
-    assert(!state.press(0) && !state.press(0x66));
+    assert(!state.press(0) && !state.press(1) && !state.press(2) && !state.press(3) && !state.press(0x66));
     assert(state.release(0xE0));
     state.clear();
     assert(state.report().modifiers==0);
     for(unsigned i=0;i<6;++i)assert(state.report().keys[i]==0);
-    for(unsigned usage=1;usage<=101;++usage) {
+    for(unsigned usage=4;usage<=101;++usage) {
         assert(state.press(static_cast<uint8_t>(usage)));
         assert(state.release(static_cast<uint8_t>(usage)));
     }
-    std::puts("PASS: 63-byte HID report descriptor; modifiers, six-key rollover cap, release/clear and 101 standard keys");
+    std::puts("PASS: 63-byte HID report descriptor; modifiers, six-key rollover cap, release/clear and 98 valid key usages");
 }
