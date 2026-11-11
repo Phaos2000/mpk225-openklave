@@ -15,6 +15,12 @@ enum class ChordType : uint8_t {
     Major9, Minor9, Dominant9, DominantFlat9, DominantSharp9,
     Dominant9Sharp11, Dominant13, Dominant13Flat9, Dominant13Sharp9,
     Minor11, Minor13, Major7Sharp11,
+    Major6, Minor6, MajorSixNine, MinorSixNine, MajorAdd9, MinorAdd9,
+    Dominant7Sus4, Dominant9Sus4, Major7Sus2, Major7Sus4,
+    Dominant7Flat5, Dominant7Sharp5, Major7Flat5, Major7Sharp5,
+    Minor7Flat9, Minor9Flat5, Dominant7Sharp11, Dominant7Flat13,
+    Dominant7Sharp9Flat13, Quartal, Sus4Add9, DiminishedMajor7,
+    MinorMajor9, Minor9Sharp11, Power5,
     Count
 };
 
@@ -49,6 +55,31 @@ inline constexpr ChordDefinition kChords[] = {
     {"m11",       5, {0, 3,10,14,17}}, // fifth omitted
     {"m13",       5, {0, 3,10,14,21}}, // fifth omitted
     {"maj7#11",   5, {0, 4,11,14,18}}, // fifth omitted
+    {"6",         4, {0, 4, 7, 9, 0}},
+    {"m6",        4, {0, 3, 7, 9, 0}},
+    {"6/9",       5, {0, 4, 7, 9,14}},
+    {"m6/9",      5, {0, 3, 7, 9,14}},
+    {"add9",      4, {0, 4, 7,14, 0}},
+    {"madd9",     4, {0, 3, 7,14, 0}},
+    {"7sus4",     4, {0, 5, 7,10, 0}},
+    {"9sus4",     5, {0, 5, 7,10,14}},
+    {"maj7sus2",  4, {0, 2, 7,11, 0}},
+    {"maj7sus4",  4, {0, 5, 7,11, 0}},
+    {"7b5",       4, {0, 4, 6,10, 0}},
+    {"7#5",       4, {0, 4, 8,10, 0}},
+    {"maj7b5",    4, {0, 4, 6,11, 0}},
+    {"maj7#5",    4, {0, 4, 8,11, 0}},
+    {"m7b9",      5, {0, 3, 7,10,13}},
+    {"m9b5",      5, {0, 3, 6,10,14}},
+    {"7#11",      5, {0, 4, 7,10,18}},
+    {"7b13",      5, {0, 4, 7,10,20}},
+    {"7#9b13",    5, {0, 4,10,15,20}}, // fifth omitted
+    {"quartal",   4, {0, 5,10,15, 0}},
+    {"sus4add9",  4, {0, 5, 7,14, 0}},
+    {"dimMaj7",   4, {0, 3, 6,11, 0}},
+    {"mMaj9",     5, {0, 3, 7,11,14}},
+    {"m9#11",     5, {0, 3,10,14,18}}, // fifth omitted
+    {"5",         3, {0, 7,12, 0, 0}}, // root, fifth and octave
 };
 static_assert(sizeof(kChords) / sizeof(kChords[0]) == static_cast<unsigned>(ChordType::Count),
               "ChordType and voicing table mismatch");
