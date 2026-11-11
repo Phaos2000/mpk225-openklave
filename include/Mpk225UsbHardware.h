@@ -200,8 +200,8 @@ private:
     }
     static void configureEp(unsigned number,uint16_t type,
                              unsigned rxStatus,unsigned txStatus) {
-        // Called only while resetting the bus: discard completion flags and
-        // force both data toggles to DATA0 for the fresh USB address.
+        // Called on USB bus reset and SET_CONFIGURATION: discard stale
+        // completion flags and force both data toggles to DATA0.
         const uint16_t old=ep(number);
         const uint16_t desired=static_cast<uint16_t>(type | number |
                                   (rxStatus<<12u) | (txStatus<<4u));
@@ -263,14 +263,17 @@ private:
             // non-control endpoint traffic, not just their readiness.
             hostHead_=hostTail_=hostCount_=0;
             ep1Pending_=false;
-            endpointsEnabled_=false;
-            setEndpoint(1,2,0); // disable/NAK all stale traffic first
-            setEndpoint(2,0,2);
-            setEndpoint(3,0,2);
-            if(control_.configured()) {
-                endpointsEnabled_=true;
-                setEndpoint(1,3,0); // EP1 OUT ready for new configuration
-            }
+            // The host restarts bulk/interrupt DATA0 after SET_CONFIGURATION.
+            // A STAT-only transition would retain stale DTOG and CTR bits,
+            // potentially rejecting the next note-off after reconnect.
+            // Drop incomplete TX packets and restore the 64-byte RX size.
+            btWrite(1,3,kPmaRx64Count);
+            btWrite(2,1,0);
+            btWrite(3,1,0);
+            configureEp(1,0x0000,control_.configured()?3:2,0);
+            configureEp(2,0x0000,0,2);
+            configureEp(3,0x0600,0,2);
+            endpointsEnabled_=control_.configured();
         }
     }
     void hostMidiReceived() {
