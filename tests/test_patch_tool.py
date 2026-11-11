@@ -11,10 +11,17 @@ struct Event{\n};\n
 void clearScreen(){\n}\n
 void ConsumeNoteEventStackAndTransmitNotesOverUSB(){\n}
 void usb(){\n}
+constexpr PMAAllocation deviceDescriptor = fixture();
+constexpr PMAAllocation mouseTry = fixture();
+constexpr PMAAllocation mouseHID = fixture();
+constexpr PMAAllocation USBMidi = fixture();
 GlobalEventStack->capacity = 100;
 ''')
     (base/'src/stm32_flash.ld').write_text('FLASH (rx): ORIGIN = 0x08006000, LENGTH = 256k')
-    (base/'src/Makefile').write_text('''all: $(PROJECT).elf MakeAkaiSysex test.elf
+    (base/'src/Makefile').write_text('''CFLAGS += -I.
+led.elf:
+	$(CC) $(CFLAGS) $^ -o $@
+all: $(PROJECT).elf MakeAkaiSysex test.elf
 .PHONY: MakeAkaiSysex
 MakeAkaiSysex:
 	echo syx
@@ -35,6 +42,10 @@ burn:
     assert (out/'src/SmartHarmony.h').is_file()
     assert (out/'src/VoicingPlanner.h').is_file()
     assert 'OpenKlaveMidiBridge.consume' in k
+    for n in ('deviceDescriptor', 'mouseTry', 'mouseHID', 'USBMidi'):
+        assert 'static constexpr PMAAllocation ' + n in k
+    assert '-nostartfiles -nodefaultlibs' in mk
+    assert '-Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group' in mk
     assert 'GlobalEventStack->scratch_3 = 0;' in k
     assert 'MakeAkaiSysex test.elf' not in mk
     assert 'Disabled: MPK225 recovery not verified' in mk
