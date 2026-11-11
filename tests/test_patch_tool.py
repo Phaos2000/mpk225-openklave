@@ -142,6 +142,8 @@ burn:
     assert 'CHORD_ON_BOOT ?= 0' in mk
     assert 'FACTORY_SCAN ?= 0' in mk
     assert 'SMART_ON_BOOT ?= 0' in mk
+    assert 'PANEL_BUTTONS ?= 0' in mk
+    assert '-DMPK225_CANDIDATE_PANEL_BUTTONS=$(PANEL_BUTTONS)' in mk
     assert '-DMPK225_CANDIDATE_SMART_ON_BOOT=$(SMART_ON_BOOT)' in mk
     assert '-DMPK225_FACTORY_KEYBED=$(FACTORY_SCAN)' in mk
     assert '-DMPK225_CANDIDATE_CHORD_ON_BOOT=$(CHORD_ON_BOOT)' in mk
