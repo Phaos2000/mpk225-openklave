@@ -94,6 +94,11 @@ public:
             req.wIndex<=2) {
             stage_=ControlStage::StatusIn; return true;
         }
+        // HID class requests require an active configuration. Descriptor
+        // requests above remain valid during enumeration at address zero.
+        if (!configured() &&
+            (req.bmRequestType==0x21 || req.bmRequestType==0xA1))
+            return false;
         // HID keyboard class requests, always interface 2.
         if (req.wIndex==2 && req.bmRequestType==0x21 &&
             req.bRequest==10 && req.wLength==0 &&

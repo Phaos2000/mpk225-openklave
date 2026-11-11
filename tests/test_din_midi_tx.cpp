@@ -1,6 +1,7 @@
 #include "Mpk225DinMidiTx.h"
 #include <cassert>
 #include <cstdio>
+#include <initializer_list>
 using namespace mpk225;
 int main() {
     Mpk225DinTxQueue q;

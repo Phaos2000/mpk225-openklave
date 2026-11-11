@@ -38,6 +38,11 @@ static uint8_t dataByte(UsbDeviceState& usb,UsbSetupRequest req) {
 int main() {
     UsbDeviceState usb;
     assert(!usb.address() && !usb.configuration() && !usb.configured());
+    // No HID *class* requests before SET_CONFIGURATION commits.
+    // HID descriptor retrieval itself remains available while enumerating.
+    assert(!usb.setup({0x21,10,0x0500,2,0})); // SET_IDLE
+    assert(!usb.setup({0xA1,2,0,2,1})); // GET_IDLE
+    assert(!usb.setup({0x21,9,0x0200,2,1})); // SET_REPORT
     const uint32_t initialEpoch=usb.configurationEpoch();
     assert(initialEpoch!=0);
     assert(getDescriptor(usb,{0x80,6,0x0100,0,18},18)==3);
