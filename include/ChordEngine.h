@@ -121,6 +121,7 @@ public:
     // A type change applies to NEW key presses only. Notes already sounding
     // must release the pitches they generated, irrespective of current type.
     MidiBatch noteOn(uint8_t key, uint8_t velocity) {
+        if (key >= kInputKeys) return MidiBatch{};
         if (velocity == 0) return noteOff(key);  // MIDI note-on / velocity 0 = off
         MidiBatch result;
         release(key, result);  // safe on repeat note-on, bounded max 5 offs
@@ -143,8 +144,35 @@ public:
     }
 
     MidiBatch noteOff(uint8_t key) {
+        if (key >= kInputKeys) return MidiBatch{};
         MidiBatch result;
         release(key, result);
+        return result;
+    }
+
+    // Optional host-selected absolute MIDI voicing, for scale-aware inversions.
+    // Reject invalid note lists BEFORE releasing any existing held chord.
+    // Default noteOn() behaviour is unchanged.
+    MidiBatch noteOnVoicing(uint8_t key, uint8_t velocity,
+                            const uint8_t* notes, uint8_t count) {
+        if (key >= kInputKeys || notes == nullptr || count == 0 ||
+            count > kVoicesPerKey) return MidiBatch{};
+        if (velocity == 0) return noteOff(key);
+        for (uint8_t i = 0; i < count; ++i) {
+            if (notes[i] > 127 || (i > 0 && notes[i] <= notes[i-1]))
+                return MidiBatch{};
+        }
+        MidiBatch result;
+        release(key, result);
+        HeldKey& held = held_[key];
+        held.active = true;
+        for (uint8_t i = 0; i < count; ++i) {
+            const uint8_t n = notes[i];
+            held.notes[held.count++] = n;
+            if (references_[n]++ == 0) {
+                result.append(0x90, n, velocity);
+            }
+        }
         return result;
     }
 
@@ -159,8 +187,8 @@ public:
         for (auto& held : held_) held = HeldKey{};
     }
 
-    bool isHeld(uint8_t key) const { return held_[key].active; }
-    uint8_t noteReferences(uint8_t note) const { return references_[note]; }
+    bool isHeld(uint8_t key) const { return key < kInputKeys && held_[key].active; }
+    uint8_t noteReferences(uint8_t note) const { return note < 128 ? references_[note] : 0; }
 
 private:
     struct HeldKey {
