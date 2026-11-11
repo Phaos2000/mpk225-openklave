@@ -24,6 +24,15 @@ namespace mpk225 {
 
 class EmbeddedSmartChordController {
 public:
+    // Preserve chosen key/scale and chord-on/off configuration while
+    // dropping stale notes after USB bus reset or host re-enumeration.
+    void resetForUsbBus() {
+        pipeline_.resetForUsbBus();
+        previous_ = VoicedChord{};
+        harmony_.hasPrevious = false;
+        fallbacks_ = 0;
+    }
+
     bool smartEnabled() const { return MPK225_CANDIDATE_SMART_ON_BOOT != 0; }
     bool chordEnabled() const { return pipeline_.chordMode(); }
     unsigned fallbackCount() const { return fallbacks_; }
