@@ -33,6 +33,16 @@ public:
         fallbacks_ = 0;
     }
 
+    // If any physical note event was lost during FIFO overflow, discard
+    // queued MIDI from the stale state and enqueue channel-1 All Sound Off
+    // and All Notes Off. This avoids silently sustaining notes at the host.
+    // These messages are transported normally once EP1 can transmit again.
+    void panicForEventLoss() {
+        resetForUsbBus();
+        (void)pipeline_.consume({251, 0, 120, 0}); // CC120 All Sound Off
+        (void)pipeline_.consume({251, 0, 123, 0}); // CC123 All Notes Off
+    }
+
     bool smartEnabled() const { return MPK225_CANDIDATE_SMART_ON_BOOT != 0; }
     bool chordEnabled() const { return pipeline_.chordMode(); }
     unsigned fallbackCount() const { return fallbacks_; }
