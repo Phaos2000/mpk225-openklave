@@ -25,6 +25,8 @@ jobs:
             "/tmp/${test%.cpp}"
           done
           python3 tests/test_patch_tool.py
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude tools/mpk225_live_chords_win.cpp -o /tmp/mpk225_host_bridge
+          /tmp/mpk225_host_bridge --selftest
       - name: Install Cortex-M3 compiler (no device access)
         run: |
           sudo apt-get update -qq
@@ -48,3 +50,22 @@ jobs:
           ! grep -q 'python ../util/wipe_os.py' /tmp/openklave-candidate/src/Makefile
           ! grep -q 'python ../util/flash_os.py' /tmp/openklave-candidate/src/Makefile
           grep -q 'Disabled: MPK225 recovery not verified' /tmp/openklave-candidate/src/Makefile
+
+  windows-live-bridge:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - name: Checkout same chord engine source
+        uses: actions/checkout@v4
+      - name: Build native WinMM audition program and run offline selftest
+        shell: cmd
+        run: |
+          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cl /nologo /std:c++17 /EHsc /O2 /W4 /Iinclude tools\mpk225_live_chords_win.cpp /link winmm.lib /OUT:MPK225-Live-Chords.exe
+          MPK225-Live-Chords.exe --selftest
+      - name: Publish host-side executable for stock-firmware testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: MPK225-Live-Chords-Win64-NOT-FIRMWARE
+          path: MPK225-Live-Chords.exe
+          retention-days: 7
