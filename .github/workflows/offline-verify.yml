@@ -52,6 +52,11 @@ jobs:
           arm-none-eabi-size /tmp/openklave-candidate/src/led.elf
           arm-none-eabi-readelf -s /tmp/openklave-candidate/src/led.elf | grep -E 'OpenKlaveMidiBridge|ConsumeNote' || true
           cp /tmp/openklave-candidate/src/led.elf /tmp/led-chord-on-boot-not-installable.elf
+          if cmp -s /tmp/led-passthrough-not-installable.elf /tmp/led-chord-on-boot-not-installable.elf; then
+            echo "ERROR: candidate chord-on-boot flag did not alter the linked ELF"
+            exit 1
+          fi
+          sha256sum /tmp/led-{passthrough,chord-on-boot}-not-installable.elf
       - name: Verify firmware release actions remain disabled
         run: |
           ! grep -q 'python ../util/wipe_os.py' /tmp/openklave-candidate/src/Makefile
