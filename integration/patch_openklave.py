@@ -68,7 +68,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -81,7 +81,11 @@ def patch_kernel(src: str) -> str:
                         '// MPK249 reference scan ranges now in KeybedReferenceDecoder.h\n',
                         'remove unsafe MPK249 scan table')
     src = one_replace(src, '  uint32_t val = (decodeMPK249NoteValue(event));',
+                      '#if MPK225_FACTORY_KEYBED\n'
+                      '  const auto decoded = mpk225::decodeMpk225FactoryScan(event);\n'
+                      '#else\n'
                       '  const auto decoded = mpk225::decodeMpk249ReferenceScan(event);\n'
+                      '#endif\n'
                       '  if (!decoded.valid) return;\n'
                       '  const uint32_t val = decoded.midiNote;',
                       'guard invalid key scan and type')
@@ -119,6 +123,8 @@ def patch_makefile(src: str) -> str:
     src = one_replace(src, 'CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER',
                       'CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER\n'
                       'CHORD_ON_BOOT ?= 0\n'
+                      'FACTORY_SCAN ?= 0\n'
+                      'CFLAGS += -DMPK225_FACTORY_KEYBED=$(FACTORY_SCAN)\n'
                       'CFLAGS += -DMPK225_CANDIDATE_CHORD_ON_BOOT=$(CHORD_ON_BOOT)',
                       'select test-only startup chord mode')
     # Use the freestanding Cortex-M3 ABI without libstdc++: the candidate
@@ -168,7 +174,8 @@ def main() -> int:
     for name, contents in files.items():
         (out / name).write_text(contents)
     for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h',
-                 'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h'):
+                 'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h',
+                 'Mpk225FactoryKeybedDecoder.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK249 keymap, fixed key velocity, USB IRQ, and MPK225 recovery NOT verified.')
