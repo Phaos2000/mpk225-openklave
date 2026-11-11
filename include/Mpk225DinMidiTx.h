@@ -66,12 +66,13 @@ public:
     static_assert(kPclk2/kBaud==kBrr && kPclk2%kBaud==0,
                   "31.25-kbaud MIDI UART divider");
     bool ready() const { return ready_; }
+    uint32_t receiveErrors() const { return receiveErrors_; }
     unsigned queuedBytes() const { return tx_.size(); }
     bool enqueue(const UsbMidiOutEvent& ev,uint8_t cable) {
         return ready_ && tx_.accept(ev,cable);
     }
     // Reject unexpected clock or USART1 remapping: do not touch TX pins.
-    bool init() {
+    bool init(bool enableRx=false) {
         const uint32_t clock=reg(0x40021004u); // RCC_CFGR
         if((clock&0x0000000Cu)!=0x00000008u || // SWS=PLL
            (clock&0x00003800u)!=0) return false; // PPRE2=DIV1
@@ -83,9 +84,26 @@ public:
         reg(0x40013810u)=0; // CR2: 1 stop bit
         reg(0x40013814u)=0; // CR3: no flow control
         reg(0x40013808u)=kBrr;
-        reg(0x4001380Cu)=(1u<<13)|(1u<<3); // UE, TE, no RX yet
+        reg(0x4001380Cu)=(1u<<13)|(1u<<3) |
+            (enableRx?(1u<<2):0u); // UE/TE plus opt-in RE
+        receiving_=enableRx;receiveErrors_=0;
         tx_.clear();
         ready_=true;
+        return true;
+    }
+    // Read SR then DR to acknowledge USART1 RXNE and error flags.
+    // Caller triggers all-channel MIDI cleanup if receiveErrors changes.
+    bool pollRx(uint8_t& value) {
+        if(!ready_ || !receiving_) return false;
+        const uint32_t sr=reg(0x40013800u);
+        if(!(sr&((1u<<5)|(1u<<3)|(1u<<2)|(1u<<1)|(1u<<0))))
+            return false;
+        const uint32_t data=reg(0x40013804u);
+        if(sr&((1u<<3)|(1u<<2)|(1u<<1)|(1u<<0))) {
+            ++receiveErrors_;return false;
+        }
+        if(!(sr&(1u<<5))) return false;
+        value=static_cast<uint8_t>(data);
         return true;
     }
     // Foreground-only, nonblocking. Never lose queued bytes when TXE low.
@@ -100,6 +118,7 @@ private:
         return *reinterpret_cast<volatile uint32_t*>(address);
     }
     Mpk225DinTxQueue tx_{};
-    bool ready_=false;
+    uint32_t receiveErrors_=0;
+    bool ready_=false,receiving_=false;
 };
 } // namespace mpk225

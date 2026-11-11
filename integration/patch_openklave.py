@@ -39,6 +39,9 @@ BRIDGE = r'''static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};
 // The reset interrupt calls this while foreground MIDI servicing is paused.
 void ResetMidiForUsbBus(){
   OpenKlaveMidiBridge.resetForUsbBus();
+#if MPK225_FACTORY_KEYBED && MPK225_DIN_RX_LAB
+  Mpk225NativeDinRx.clear();
+#endif
   resetEventQueue(GlobalEventStack); // includes pending count, not only indices
   gEventQueueNeedsPanic = 0; // the old connection can no longer sound notes
 }
@@ -104,7 +107,25 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
   }
   __set_PRIMASK(queueMask);
 
-  if (OpenKlaveMidiBridge.queuedMessages() == 0) return;
+#if MPK225_FACTORY_KEYBED && MPK225_DIN_RX_LAB
+  // Poll the physical DIN USART RX in bounded foreground batches.
+  static uint32_t previousRxErrors=0;
+  for(int i=0;i<8;++i) {
+    uint8_t dinByte=0;
+    if(!Mpk225NativeDin.pollRx(dinByte)) break;
+    (void)Mpk225NativeDinRx.feed(dinByte,MPK225_DIN_RX_USB_CABLE);
+  }
+  const uint32_t serialErrorCount=Mpk225NativeDin.receiveErrors();
+  if(serialErrorCount!=previousRxErrors) {
+    previousRxErrors=serialErrorCount;
+    Mpk225NativeDinRx.signalLoss(MPK225_DIN_RX_USB_CABLE);
+  }
+#endif
+  if(OpenKlaveMidiBridge.queuedMessages()==0
+#if MPK225_FACTORY_KEYBED && MPK225_DIN_RX_LAB
+     && Mpk225NativeDinRx.queuedEvents()==0
+#endif
+    ) return;
 
 #if MPK225_FACTORY_KEYBED
   // Factory MPK225: bulk IN EP2, 64 bytes, 16 USB-MIDI event packets.
@@ -115,6 +136,20 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
     __set_PRIMASK(bulkMask);
     return;
   }
+#if MPK225_DIN_RX_LAB
+  // Share physical DIN traffic with chord notes on MPK225 bulk IN EP2.
+  static bool sentKeyboardLast=false;
+  if(Mpk225NativeDinRx.queuedEvents()!=0 &&
+     (!OpenKlaveMidiBridge.queuedMessages() || sentKeyboardLast)) {
+    const auto fromDin=Mpk225NativeDinRx.takeBulkFrame();
+    if(fromDin.length!=0)
+      (void)Mpk225NativeUsb.submitMidiIn(fromDin.bytes,fromDin.length);
+    sentKeyboardLast=false;
+    __set_PRIMASK(bulkMask);
+    return;
+  }
+  sentKeyboardLast=true;
+#endif
   const mpk225::UsbBulkFrame bulk=OpenKlaveMidiBridge.takeUsbBulkFrame();
   if (bulk.length>0)
     (void)Mpk225NativeUsb.submitMidiIn(bulk.bytes,bulk.length);
@@ -154,7 +189,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\n#include "Mpk225UsbHardware.h"\n#include "Mpk225DinMidiTx.h"\n#if MPK225_FACTORY_KEYBED\nstatic mpk225::Mpk225UsbHardware Mpk225NativeUsb{};\n#if MPK225_DIN_TX_LAB\nstatic_assert(MPK225_DIN_USB_CABLE < 4, "Explicit USB DIN cable required");\nstatic mpk225::Mpk225DinUart1 Mpk225NativeDin{};\n#endif\n#endif\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\n#include "Mpk225UsbHardware.h"\n#include "Mpk225DinMidiTx.h"\n#include "Mpk225DinMidiRx.h"\n#if MPK225_FACTORY_KEYBED\nstatic mpk225::Mpk225UsbHardware Mpk225NativeUsb{};\n#if MPK225_DIN_TX_LAB || MPK225_DIN_RX_LAB\nstatic mpk225::Mpk225DinUart1 Mpk225NativeDin{};\n#endif\n#if MPK225_DIN_TX_LAB\nstatic_assert(MPK225_DIN_USB_CABLE < 4, "Explicit USB DIN TX cable required");\n#endif\n#if MPK225_DIN_RX_LAB\nstatic_assert(MPK225_DIN_RX_USB_CABLE < 4, "Explicit USB DIN RX cable required");\nstatic mpk225::Mpk225DinMidiRx Mpk225NativeDinRx{};\n#endif\n#endif\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -303,8 +338,8 @@ static_assert((NewDeviceConfiguration(dev_descriptor).a[4] & 0xFFFFu) == 0x09E8u
     # USB/serial hardware in the default firmware candidate.
     src = one_replace(src, '    USARTSetup();',
         '    USARTSetup();\n'
-        '#if MPK225_FACTORY_KEYBED && MPK225_DIN_TX_LAB\n'
-        '    (void)Mpk225NativeDin.init();\n'
+        '#if MPK225_FACTORY_KEYBED && (MPK225_DIN_TX_LAB || MPK225_DIN_RX_LAB)\n'
+        '    (void)Mpk225NativeDin.init(MPK225_DIN_RX_LAB != 0);\n'
         '#endif',
         'opt-in schematic-backed USART1 DIN TX initialization')
     src = one_replace(src, 'GlobalEventStack->capacity = 100;',
@@ -381,8 +416,12 @@ def patch_makefile(src: str) -> str:
         'PANEL_BUTTONS ?= 0\n'
         'DIN_TX_LAB ?= 0\n'
         'DIN_USB_CABLE ?= 255\n'
+        'DIN_RX_LAB ?= 0\n'
+        'DIN_RX_USB_CABLE ?= 255\n'
         'CFLAGS += -DMPK225_DIN_TX_LAB=$(DIN_TX_LAB)\n'
-        'CFLAGS += -DMPK225_DIN_USB_CABLE=$(DIN_USB_CABLE)\n',
+        'CFLAGS += -DMPK225_DIN_USB_CABLE=$(DIN_USB_CABLE)\n'
+        'CFLAGS += -DMPK225_DIN_RX_LAB=$(DIN_RX_LAB)\n'
+        'CFLAGS += -DMPK225_DIN_RX_USB_CABLE=$(DIN_RX_USB_CABLE)\n',
         'explicit opt-in physical DIN TX cable')
     # Use the freestanding Cortex-M3 ABI without libstdc++: the candidate
     # makes no exception, RTTI, thread-safe-static, or C++ library calls.
@@ -438,7 +477,7 @@ def main() -> int:
                  'SmartChordDisplay.h', 'Mpk225UsbDescriptors.h',
                  'Mpk225HidKeyboard.h', 'Mpk225UsbControl.h',
                  'Mpk225UsbDeviceState.h', 'Mpk225HostMidiQueue.h', 'Mpk225UsbHardware.h',
-                 'Mpk225DinMidiTx.h'):
+                 'Mpk225DinMidiTx.h', 'Mpk225DinMidiRx.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK225 timing/velocity curve and USB IRQ still need hardware validation; recovery NOT verified.')
