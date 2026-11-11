@@ -99,16 +99,6 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 def patch_kernel(src: str) -> str:
     src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
-    # Do not falsely enumerate as MPK249 when targeting the MPK225.
-    # USB vendor 09E8 is shared; factory observed MPK225 PID is 0023.
-    # The MPK249 reference build retains PID 0024.
-    src = one_replace(src, '    0x00, 0x24, //idProduct',
-                      '#if MPK225_FACTORY_KEYBED\n'
-                      '    0x23, 0x00, // MPK225 PID 0x0023 (little-endian)\n'
-                      '#else\n'
-                      '    0x24, 0x00, // MPK249 PID 0x0024 (little-endian)\n'
-                      '#endif',
-                      'select USB identity by supported keybed model')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
