@@ -98,6 +98,11 @@ burn:
     usb_handler=k[k.index('void usb(){'):k.index('// Check if I need to reset')]
     assert 'ConsumeNoteEventStackAndTransmitNotesOverUSB();' not in usb_handler
     assert 'usbEpCtrAcknowledgeWrite(old)' in usb_handler
+    assert 'void ResetMidiForUsbBus(){' in k
+    assert 'OpenKlaveMidiBridge.resetForUsbBus();' in k
+    reset_section=k[k.index('void usbReset(void){'):k.index('void writeNumberToScreen')]
+    assert 'ResetMidiForUsbBus();' in reset_section
+    assert 'GlobalEventStack->scratch_2 = 0;' in k
     assert 'if (!mpk225::usbShouldSubmitFrame(*ep1,' in k
     assert k.index('if (!mpk225::usbShouldSubmitFrame(*ep1,') < k.index('OpenKlaveMidiBridge.takeUsbFrame()')
     assert 'USB->ISTR = 0' not in k[k.index('void ConsumeNoteEventStackAndTransmitNotesOverUSB(){'):k.index('void usb(){')]
