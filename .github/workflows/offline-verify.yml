@@ -37,6 +37,12 @@ jobs:
           /tmp/test_panel_enabled
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude tools/mpk225_live_chords_win.cpp -o /tmp/mpk225_host_bridge
           /tmp/mpk225_host_bridge --selftest
+      - name: Compile MPK225 composite USB peripheral for Cortex-M3 without apt
+        shell: bash
+        run: |
+          set -euo pipefail
+          clang++ --target=armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -fno-threadsafe-statics -Iinclude -c tests/arm_usb.cpp -o /tmp/mpk225-composite-arm.o
+          file /tmp/mpk225-composite-arm.o
       - name: Install Cortex-M3 compiler (no device access)
         run: |
           sudo apt-get update -qq
