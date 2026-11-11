@@ -41,6 +41,25 @@ public:
             appendRaw(123); appendRaw(0); // All Notes Off
         }
     }
+    // Validate USB MIDI 1.0 CIN framing before sending bytes to a physical
+    // serial port. CIN=F is explicitly allowed to carry *unparsed single*
+    // bytes, so do NOT require it to be a realtime status.
+    static constexpr bool validEvent(const UsbMidiOutEvent& ev) {
+        const unsigned cin=ev.cin();
+        const uint8_t a=ev.data[1],b=ev.data[2],c=ev.data[3];
+        switch(cin) {
+        case 2: return (a==0xF1 || a==0xF3) && b<0x80;
+        case 3: return a==0xF2 && b<0x80 && c<0x80;
+        case 4: return (a==0xF0 || a<0x80) && b<0x80 && c<0x80;
+        case 5: return a==0xF6 || a==0xF7;
+        case 6: return (a==0xF0 || a<0x80) && b==0xF7;
+        case 7: return (a==0xF0 || a<0x80) && b<0x80 && c==0xF7;
+        case 15: return true; // USB-MIDI raw single byte, any value
+        default:
+            return cin>=8 && cin<=0xE &&
+                (a>>4)==cin && b<0x80 && c<0x80;
+        }
+    }
     // Preserve the USB event in its source queue if this transfer cannot
     // be accepted whole. A caller must explicitly bind the MIDI DIN cable.
     bool accept(const UsbMidiOutEvent& event,uint8_t boundCable) {
@@ -48,10 +67,7 @@ public:
             return false;
         const unsigned cin=event.cin();
         const unsigned bytes=usbMidiSerialLength(cin);
-        if(!bytes || bytes>freeSlots()) return false;
-        if(cin>=8 && cin<=0xE &&
-           (event.data[1]>>4)!=cin) return false;
-        if(cin==0xF && event.data[1]<0xF8) return false;
+        if(!bytes || bytes>freeSlots() || !validEvent(event)) return false;
         for(unsigned i=1;i<=bytes;++i) {
             fifo_[tail_]=event.data[i];
             tail_=(tail_+1u)%kCapacity;
