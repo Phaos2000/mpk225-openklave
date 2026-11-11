@@ -68,7 +68,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -92,6 +92,20 @@ def patch_kernel(src: str) -> str:
     src = one_replace(src, 'if ((event & 0x000000FF) == 0xFE){',
                       'if (!decoded.down){',
                       'use validated action in keybed handler')
+    # Factory parser packs two timing bytes above the key scan/status bytes.
+    # Preserve them in MPK225 mode; use a bounded, calibrated-later response
+    # instead of OpenKlave's hard-coded velocity 100. Release velocity stays 0.
+    # MPK249 reference mode is intentionally left unchanged.
+    src = one_replace(src, '  uint32_t velocity = 100;',
+                      '#if MPK225_FACTORY_KEYBED\n'
+                      '  const uint32_t velocity = mpk225::contactVelocityFromWord(event);\n'
+                      '#else\n'
+                      '  const uint32_t velocity = 100;\n'
+                      '#endif',
+                      'use contact timing for MPK225 candidate')
+    src = one_replace(src, 'Event e = {0xFF,100,val,0};',
+                      'Event e = {0xFF,velocity,val,0};',
+                      'forward velocity to key press')
     # OpenKlave keeps a pointer to these descriptors between USB IRQ calls.
     # Function-local constexpr objects have automatic storage duration;
     # make them static to prevent a dangling descriptor pointer.
@@ -175,10 +189,10 @@ def main() -> int:
         (out / name).write_text(contents)
     for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h',
                  'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h',
-                 'Mpk225FactoryKeybedDecoder.h'):
+                 'Mpk225FactoryKeybedDecoder.h', 'KeybedContactVelocity.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
-    print('IMPORTANT: MPK249 keymap, fixed key velocity, USB IRQ, and MPK225 recovery NOT verified.')
+    print('IMPORTANT: MPK225 timing/velocity curve and USB IRQ still need hardware validation; recovery NOT verified.')
     print('Flashing and SysEx build targets intentionally disabled. No device access performed.')
     return 0
 
