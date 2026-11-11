@@ -11,6 +11,17 @@ struct Event{\n};\n
 void clearScreen(){\n}\n
 void ConsumeNoteEventStackAndTransmitNotesOverUSB(){\n}
 void usb(){\n}
+unsigned int decodeMPK249NoteValue(uint32_t u){
+  unsigned int map[] = {0,0,60};
+  return map[(u&0x0000FF00)>>8];
+}
+void CheckKeyBed(){
+  uint32_t event = 0;
+  uint32_t val = (decodeMPK249NoteValue(event));
+  if ((event & 0x000000FF) == 0xFE){
+    consume(val);
+  }
+}
 constexpr PMAAllocation deviceDescriptor = fixture();
 constexpr PMAAllocation mouseTry = fixture();
 constexpr PMAAllocation mouseHID = fixture();
@@ -39,6 +50,11 @@ burn:
     mk=(out/'src/Makefile').read_text()
     assert 'OpenKlaveEventQueue.h' in k
     assert 'MpkMidiPipeline.h' in k
+    assert (out/'src/KeybedReferenceDecoder.h').is_file()
+    assert 'decodeMpk249ReferenceScan(event)' in k
+    assert 'if (!decoded.valid) return;' in k
+    assert 'if (!decoded.down)' in k
+    assert 'unsigned int map[]' not in k, 'unsafe lookup table must be removed'
     assert (out/'src/SmartHarmony.h').is_file()
     assert (out/'src/VoicingPlanner.h').is_file()
     assert 'OpenKlaveMidiBridge.consume' in k
