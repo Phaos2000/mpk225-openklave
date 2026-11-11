@@ -57,8 +57,9 @@ public:
             if(byte==0xF1 || byte==0xF2 || byte==0xF3) {
                 status_=byte;return true;
             }
-            if(byte>=0xF4 && byte<=0xF7)
+            if(byte==0xF6 || byte==0xF7)
                 return emit(cable,5,byte,0,0);
+            // F4/F5 are undefined MIDI status bytes, not serial messages.
             ++malformed_;return true;
         }
         if(!status_) status_=running_;
