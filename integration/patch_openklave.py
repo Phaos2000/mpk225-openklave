@@ -214,6 +214,12 @@ static_assert((NewDeviceConfiguration(dev_descriptor).a[4] & 0xFFFFu) == 0x09E8u
     src = one_replace(src, 'GlobalEventStack->capacity = 100;',
         'GlobalEventStack->capacity = 100;\n    GlobalEventStack->scratch_2 = 0;\n    GlobalEventStack->scratch_3 = 0;',
         'FIFO head/tail init')
+    # Upstream kernel.start() contains a terminal infinite loop, so main()
+    # never receives control. The foreground USB MIDI service installed in
+    # main.c would otherwise be DEAD CODE despite a successfully linked ELF.
+    src = one_replace(src, '    while(1){\n\n    };\n\n}\n\n#endif',
+                      '    return 0;\n\n}\n\n#endif',
+                      'allow firmware initialization to reach main MIDI loop')
     # Conservative firmware default: raw keyboard passthrough.
     # No unverified MPK225 button is assigned to enable Chord Mode.
     return src
