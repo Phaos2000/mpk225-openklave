@@ -1,0 +1,81 @@
+#pragma once
+// Byte-for-byte USB descriptor MODEL from the owner's read-only USBTreeView
+// export of a factory MPK225 v1.02 (VID 09E8 PID 0023, 2026-11-11).
+// Source is a host-observed configuration, not a USB firmware implementation.
+// NO serial strings, system paths or user-unique identifiers are stored.
+// The factory MPK225 has 4 logical USB MIDI jacks and a HID boot keyboard.
+// This file does not authorize writing, flashing, or USB endpoint activation.
+#include <stdint.h>
+#include <stddef.h>
+
+namespace mpk225 {
+inline constexpr uint8_t kFactoryUsbDeviceDescriptor[] = {
+    0x12, 0x01, 0x10, 0x01, 0x00, 0x00, 0x00, 0x08, 0xE8, 0x09, 0x23, 0x00, 0x02, 0x01, 0x01, 0x02, 0x04, 0x01
+};
+inline constexpr uint8_t kFactoryUsbConfigDescriptor[] = {
+    // Configuration
+    0x09, 0x02, 0xA9, 0x00, 0x03, 0x0D, 0x00, 0x80, 0xFA,
+    // AudioControl interface 0
+    0x09, 0x04, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00,
+    // AudioControl header
+    0x09, 0x24, 0x01, 0x00, 0x01, 0x12, 0x00, 0x01, 0x01,
+    // MIDIStreaming interface 1
+    0x09, 0x04, 0x01, 0x00, 0x02, 0x01, 0x03, 0x00, 0x03,
+    // MIDIStreaming header
+    0x07, 0x24, 0x01, 0x00, 0x01, 0x65, 0x00,
+    // MIDI IN jack 1 Port A
+    0x06, 0x24, 0x02, 0x01, 0x01, 0x06,
+    // MIDI IN jack 2 Port B
+    0x06, 0x24, 0x02, 0x01, 0x02, 0x07,
+    // MIDI IN jack 3 MIDI
+    0x06, 0x24, 0x02, 0x01, 0x03, 0x08,
+    // MIDI IN jack 4 Remote
+    0x06, 0x24, 0x02, 0x01, 0x04, 0x09,
+    // MIDI OUT jack 5 Port A
+    0x09, 0x24, 0x03, 0x01, 0x05, 0x01, 0x01, 0x01, 0x0D,
+    // MIDI OUT jack 6 Port B
+    0x09, 0x24, 0x03, 0x01, 0x06, 0x01, 0x02, 0x01, 0x0E,
+    // MIDI OUT jack 7 MIDI
+    0x09, 0x24, 0x03, 0x01, 0x07, 0x01, 0x03, 0x01, 0x0F,
+    // MIDI OUT jack 8 Remote
+    0x09, 0x24, 0x03, 0x01, 0x08, 0x01, 0x04, 0x01, 0x10,
+    // MIDI bulk OUT EP1
+    0x09, 0x05, 0x01, 0x02, 0x40, 0x00, 0x00, 0x00, 0x00,
+    // Class-specific MIDI OUT jack associations
+    0x08, 0x25, 0x01, 0x04, 0x01, 0x02, 0x03, 0x04,
+    // MIDI bulk IN EP2
+    0x09, 0x05, 0x82, 0x02, 0x40, 0x00, 0x00, 0x00, 0x00,
+    // Class-specific MIDI IN jack associations
+    0x08, 0x25, 0x01, 0x04, 0x05, 0x06, 0x07, 0x08,
+    // HID keyboard interface 2
+    0x09, 0x04, 0x02, 0x00, 0x01, 0x03, 0x01, 0x01, 0x00,
+    // HID descriptor, report length 63
+    0x09, 0x21, 0x10, 0x00, 0x00, 0x01, 0x22, 0x3F, 0x00,
+    // HID interrupt IN EP3
+    0x07, 0x05, 0x83, 0x03, 0x08, 0x00, 0x0A,
+    // Additional HID OUT EP3 (listed despite bNumEndpoints=1)
+    0x07, 0x05, 0x03, 0x03, 0x08, 0x00, 0x0A,
+};
+static_assert(sizeof(kFactoryUsbDeviceDescriptor)==18, "USB device descriptor length");
+static_assert(sizeof(kFactoryUsbConfigDescriptor)==169, "Measured configuration length");
+static_assert(kFactoryUsbConfigDescriptor[2]==169 && kFactoryUsbConfigDescriptor[3]==0,
+              "wTotalLength is 169");
+static_assert(kFactoryUsbConfigDescriptor[4]==3, "Three USB interfaces");
+static_assert(kFactoryUsbConfigDescriptor[5]==13, "Factory config value 13");
+static_assert(kFactoryUsbDeviceDescriptor[8]==0xE8 &&
+              kFactoryUsbDeviceDescriptor[9]==0x09 &&
+              kFactoryUsbDeviceDescriptor[10]==0x23 &&
+              kFactoryUsbDeviceDescriptor[11]==0x00,
+              "Observed MPK225 USB identity");
+
+// Factory descriptor oddity: Interface 2 declares bNumEndpoints=1 but
+// TWO endpoint descriptors follow: EP3 IN and EP3 OUT. Windows reports
+// only three open data pipes (EP1 OUT, EP2 IN, EP3 IN). Retain both
+// descriptors as observed; do not silently normalize them.
+inline constexpr uint8_t kFactoryMidiOutEndpoint=0x01;
+inline constexpr uint8_t kFactoryMidiInEndpoint=0x82;
+inline constexpr uint8_t kFactoryHidInEndpoint=0x83;
+inline constexpr uint8_t kFactoryHidOutEndpointListed=0x03;
+inline constexpr unsigned kFactoryMidiMaxPacket=64;
+inline constexpr unsigned kFactoryHidMaxPacket=8;
+} // namespace mpk225
