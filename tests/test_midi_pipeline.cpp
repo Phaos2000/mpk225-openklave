@@ -63,6 +63,50 @@ static void test_pad_is_not_chord_and_controls() {
                       {0xB0,1,72},{0xB0,16,22},{0xB0,70,65},
                       {0xB0,71,1},{0xB0,70,65},{0xE0,0,64}});
 }
+static void test_shared_pad_keyboard_ownership() {
+    // A pad and a key can emit the same MIDI note. Releasing either must
+    // not silence the other source. No duplicate note-ons are emitted.
+    MpkMidiPipeline p;
+    assert(p.consume({0xFF,92,60,0}));
+    assert(p.consume({900,101,60,0}));
+    assert(p.consume({0xFE,0,60,0}));
+    assert(p.consume({905,44,60,0}));
+    assert(p.consume({901,0,60,0}));
+    expect(drain(p),{{0x90,60,92},{0xA0,60,44},{0x80,60,0}});
+
+    MpkMidiPipeline reverse;
+    assert(reverse.consume({900,91,60,0}));
+    assert(reverse.consume({0xFF,80,60,0}));
+    assert(reverse.consume({901,0,60,0}));
+    assert(reverse.consume({0xFE,0,60,0}));
+    expect(drain(reverse),{{0x90,60,91},{0x80,60,0}});
+
+    MpkMidiPipeline chord;
+    assert(chord.setChordMode(true));
+    chord.setChordType(ChordType::Major);
+    assert(chord.consume({0xFF,90,60,0})); // C E G
+    assert(chord.consume({900,80,64,0})); // pad overlaps E
+    assert(chord.consume({0xFE,0,60,0})); // release C/G only
+    assert(chord.consume({901,0,64,0})); // now release E
+    expect(drain(chord),{{0x90,60,90},{0x90,64,90},{0x90,67,90},
+                         {0x80,60,0},{0x80,67,0},{0x80,64,0}});
+
+    MpkMidiPipeline retrigger;
+    assert(retrigger.consume({900,101,60,0}));
+    assert(retrigger.consume({900,99,60,0}));
+    assert(retrigger.consume({901,0,60,0}));
+    assert(retrigger.consume({901,0,60,0})); // duplicate release
+    expect(drain(retrigger),{{0x90,60,101},{0x80,60,0},
+                             {0x90,60,99},{0x80,60,0}});
+
+    MpkMidiPipeline reset;
+    assert(reset.consume({900,100,60,0}));
+    assert(reset.consume({0xFF,100,60,0}));
+    reset.resetForUsbBus(); // do not retain obsolete note owners
+    assert(reset.consume({0xFF,90,60,0}));
+    assert(reset.consume({0xFE,0,60,0}));
+    expect(drain(reset),{{0x90,60,90},{0x80,60,0}});
+}
 static void test_backpressure_atomicity() {
     MpkMidiPipeline p;
     assert(p.setChordMode(true));
@@ -128,8 +172,9 @@ int main() {
     test_passthrough();
     test_chord_mode();
     test_pad_is_not_chord_and_controls();
+    test_shared_pad_keyboard_ownership();
     test_backpressure_atomicity();
     test_shared_notes_retrigger_order();
     test_long_stress();
-    printf("PASS: six MIDI-pipeline suites, 200000 stress events, %zu-byte pipeline\n",sizeof(MpkMidiPipeline));
+    printf("PASS: seven MIDI-pipeline suites, 200000 stress events, shared pad/key/chord note ownership, %zu-byte pipeline\n",sizeof(MpkMidiPipeline));
 }

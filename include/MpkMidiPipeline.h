@@ -88,6 +88,8 @@ public:
         chords_.setChordType(selected);
         fifo_ = FixedMidiQueue<kQueueSize>{};
         for (auto& held : passthroughHeld_) held = false;
+        for (auto& held : padHeld_) held = false;
+        for (auto& refs : noteOwners_) refs = 0;
     }
 
     bool chordMode() const { return chordMode_; }
@@ -118,7 +120,8 @@ public:
                 return false;
         // Allow the worst case: five old notes off, five new notes on.
         if (fifo_.freeSlots() < 2 * ChordEngine::kVoicesPerKey) return false;
-        return fifo_.append(chords_.noteOnVoicing(key, velocity, notes, count));
+        appendOwnedBatch(chords_.noteOnVoicing(key, velocity, notes, count));
+        return true;
     }
 
     // Returns false only when an input needs retry due to FIFO backpressure.
@@ -135,25 +138,42 @@ public:
                 // Maximum chord engine expansion is 10: retrigger 5 off + 5 on.
                 if (fifo_.freeSlots() < (on ? 10u : 5u)) return false;
                 const auto batch = on ? chords_.noteOn(n, v) : chords_.noteOff(n);
-                return fifo_.append(batch);
+                appendOwnedBatch(batch);
+                return true;
             }
             const bool old = passthroughHeld_[n];
             const size_t needed = on ? (old ? 2 : 1) : (old ? 1 : 0);
             if (fifo_.freeSlots() < needed) return false;
-            if (old) fifo_.append(MidiEvent{0x80, n, 0});
+            if (old) emitOwnedNote(MidiEvent{0x80, n, 0});
             passthroughHeld_[n] = false;
             if (on) {
-                fifo_.append(MidiEvent{0x90, n, v});
+                emitOwnedNote(MidiEvent{0x90, n, v});
                 passthroughHeld_[n] = true;
             }
             return true;
         }
-        // Pad events retain their own output notes; they never become chords.
+        // Pads are separate from chords musically, but share MIDI pitches.
+        // Do not silence a held keyboard/chord pitch when its pad releases,
+        // or vice versa. A repeated pad down retriggers its own ownership.
         if (e.type == 900 || e.type == 901 || e.type == 905) {
-            if (e.note > 127 || fifo_.freeSlots() < 1) return e.note > 127;
-            const uint8_t status = e.type == 900 ? 0x90 : (e.type == 901 ? 0x80 : 0xA0);
-            return fifo_.append(MidiEvent{status, static_cast<uint8_t>(e.note),
-                static_cast<uint8_t>(e.value > 127 ? 127 : e.value)});
+            if (e.note > 127) return true;
+            const uint8_t n=static_cast<uint8_t>(e.note);
+            const uint8_t v=static_cast<uint8_t>(e.value>127?127:e.value);
+            if (e.type == 905) {
+                if (fifo_.freeSlots()<1) return false;
+                return fifo_.append(MidiEvent{0xA0,n,v});
+            }
+            const bool on=e.type==900 && v!=0;
+            const bool old=padHeld_[n];
+            const size_t needed=on?(old?2u:1u):(old?1u:0u);
+            if (fifo_.freeSlots()<needed) return false;
+            if (old) emitOwnedNote(MidiEvent{0x80,n,0});
+            padHeld_[n]=false;
+            if (on) {
+                emitOwnedNote(MidiEvent{0x90,n,v});
+                padHeld_[n]=true;
+            }
+            return true;
         }
         // Early source's ModWheel and (fader/knob) CC events.
         if (e.type == 201 || e.type == 251 || e.type == 500 || e.type == 501) {
@@ -212,9 +232,29 @@ public:
         return out;
     }
 private:
+    // ChordEngine already collapses shared voices between keyboard chords;
+    // its output is one owner here. Each pad and passthrough key can provide
+    // one further owner. Emit note-off only when the last source releases.
+    // Call only after the caller's worst-case FIFO capacity preflight.
+    void emitOwnedNote(MidiEvent m) {
+        if (m.status==0x90 && m.velocity!=0) {
+            uint8_t& owners=noteOwners_[m.note];
+            if (owners==0) (void)fifo_.append(m);
+            if (owners<255) ++owners;
+        } else if (m.status==0x80 || (m.status==0x90 && m.velocity==0)) {
+            uint8_t& owners=noteOwners_[m.note];
+            if(owners!=0 && --owners==0)
+                (void)fifo_.append(MidiEvent{0x80,m.note,0});
+        }
+    }
+    void appendOwnedBatch(const MidiBatch& batch) {
+        for (unsigned i=0;i<batch.count;++i) emitOwnedNote(batch.events[i]);
+    }
     ChordEngine chords_{};
     FixedMidiQueue<kQueueSize> fifo_{};
     bool passthroughHeld_[128]{};
+    bool padHeld_[128]{};
+    uint8_t noteOwners_[128]{};
 #if defined(MPK225_CANDIDATE_CHORD_ON_BOOT)
     static_assert(MPK225_CANDIDATE_CHORD_ON_BOOT == 0 ||
                   MPK225_CANDIDATE_CHORD_ON_BOOT == 1,
