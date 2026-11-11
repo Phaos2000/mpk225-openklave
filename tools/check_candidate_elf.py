@@ -46,6 +46,67 @@ def read_sections(raw: bytes) -> list[Section]:
     return [Section(section_name(h[0]),h[3],h[5],h[2],h[1],h[4])
             for h in rows]
 
+
+@dataclass(frozen=True)
+class LoadSegment:
+    vaddr: int
+    paddr: int
+    filesz: int
+    memsz: int
+    offset: int
+
+def read_load_segments(raw: bytes) -> list[LoadSegment]:
+    """ELF32 PT_LOAD mappings. For .data, p_paddr is the flash LMA."""
+    if len(raw)<52 or raw[:6]!=b"\x7fELF\x01\x01":
+        raise ValueError("expected ELF32 little-endian")
+    phoff=struct.unpack_from("<I",raw,28)[0]
+    entsize,count=struct.unpack_from("<HH",raw,42)
+    if entsize<32 or not (0<count<128):
+        raise ValueError("missing or invalid ELF program headers")
+    if phoff>len(raw) or count*entsize>len(raw)-phoff:
+        raise ValueError("truncated ELF program headers")
+    segments=[]
+    for i in range(count):
+        typ,off,va,pa,filesz,memsz,flags,align=struct.unpack_from(
+            "<IIIIIIII",raw,phoff+i*entsize)
+        if typ!=1: continue  # PT_LOAD
+        if filesz>memsz or off>len(raw) or filesz>len(raw)-off:
+            raise ValueError("malformed load segment")
+        segments.append(LoadSegment(va,pa,filesz,memsz,off))
+    if not segments:
+        raise ValueError("no PT_LOAD image to validate")
+    return segments
+
+def verify_flash_loads(sections: list[Section],
+                       segments: list[LoadSegment]) -> int:
+    """Validate *load* addresses, not only VMA addresses.
+
+    Initialized RAM is linked with VMA in SRAM but loaded from flash.
+    Without this check an ELF could pass every prior section-VMA check
+    while .data's flash bytes overwrite the boot token or preset pages.
+    """
+    loads=[]
+    for s in sections:
+        if not (s.flags&2) or not s.size or s.kind==8:
+            continue
+        owners=[p for p in segments
+                if p.vaddr<=s.addr and s.addr+s.size<=p.vaddr+p.memsz
+                and p.offset<=s.offset and s.offset+s.size<=p.offset+p.filesz]
+        if len(owners)!=1:
+            raise ValueError(f"{s.name}: ambiguous or missing flash load segment")
+        p=owners[0]
+        lma=p.paddr+s.addr-p.vaddr
+        if lma<FLASH_START or lma+s.size>FLASH_END:
+            raise ValueError(f"{s.name}: load address outside application flash")
+        loads.append((lma,lma+s.size,s.name))
+    if not loads:
+        raise ValueError("no initialized flash load sections")
+    loads.sort()
+    for a,b in zip(loads,loads[1:]):
+        if a[1]>b[0]:
+            raise ValueError(f"flash load collision: {a[2]} with {b[2]}")
+    return max(x[1] for x in loads)
+
 def verify(sections: list[Section],raw: bytes)->tuple[int,int]:
     allocated=[s for s in sections if s.flags&2 and s.size]
     flash=[]
@@ -86,8 +147,11 @@ def main() -> None:
         raise SystemExit("usage: check_candidate_elf.py ELF [ELF ...]")
     for p in sys.argv[1:]:
         raw=Path(p).read_bytes()
-        a,b=verify(read_sections(raw),raw)
-        print(f"PASS NOT INSTALLABLE: {p} flash end {a:#x}, RAM end {b:#x}")
+        sections=read_sections(raw)
+        a,b=verify(sections,raw)
+        load_end=verify_flash_loads(sections,read_load_segments(raw))
+        print(f"PASS NOT INSTALLABLE: {p} section flash end {a:#x},"
+              f" flash load end {load_end:#x}, RAM end {b:#x}")
 
 if __name__=="__main__":
     main()
