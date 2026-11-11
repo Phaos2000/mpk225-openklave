@@ -73,6 +73,13 @@ def patch_kernel(src: str) -> str:
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
         '\nvoid usb(){', BRIDGE, 'MIDI->USB bridge')
+    # OpenKlave keeps a pointer to these descriptors between USB IRQ calls.
+    # Function-local constexpr objects have automatic storage duration;
+    # make them static to prevent a dangling descriptor pointer.
+    for name in ('deviceDescriptor', 'mouseTry', 'mouseHID', 'USBMidi'):
+        src = one_replace(src, 'constexpr PMAAllocation ' + name + ' =',
+                          'static constexpr PMAAllocation ' + name + ' =',
+                          'USB descriptor lifetime: ' + name)
     src = one_replace(src, 'GlobalEventStack->capacity = 100;',
         'GlobalEventStack->capacity = 100;\n    GlobalEventStack->scratch_2 = 0;\n    GlobalEventStack->scratch_3 = 0;',
         'FIFO head/tail init')
@@ -89,6 +96,15 @@ def patch_linker(src: str) -> str:
 def patch_makefile(src: str) -> str:
     src = one_replace(src, 'all: $(PROJECT).elf MakeAkaiSysex test.elf',
         'all: $(PROJECT).elf test.elf', 'disable automatic SysEx packaging')
+    # Use the freestanding Cortex-M3 ABI without libstdc++: the candidate
+    # makes no exception, RTTI, thread-safe-static, or C++ library calls.
+    # Explicit C runtime link avoids multi-gigabyte target C++ package.
+    src = one_replace(src, 'CFLAGS += -I.', 
+        'CFLAGS += -nostartfiles -nodefaultlibs -fno-exceptions -fno-rtti -fno-threadsafe-statics\nCFLAGS += -I.',
+        'freestanding link options')
+    src = one_replace(src, '$(CC) $(CFLAGS) $^ -o $@',
+        '$(CC) $(CFLAGS) $^ -Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group -o $@',
+        'ARM C runtime link')
     # Keep non-hardware elf build; disallow dangerous targets in generated tree.
     src = block_replace(src, '.PHONY: MakeAkaiSysex', '\n# remove binary files',
         '.PHONY: MakeAkaiSysex\nMakeAkaiSysex:\n\t@echo "Disabled: MPK225 recovery not verified" && exit 1\n',
