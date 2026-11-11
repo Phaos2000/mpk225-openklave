@@ -233,8 +233,15 @@ def patch_main(src: str) -> str:
 
 
 def patch_linker(src: str) -> str:
-    return one_replace(src, 'ORIGIN = 0x08006000, LENGTH = 256k',
+    src = one_replace(src, 'ORIGIN = 0x08006000, LENGTH = 256k',
         'ORIGIN = 0x08006000, LENGTH = 0x2E000', '184-KiB application-only flash boundary')
+    # The original MPK249 linker places the stack at 0x2000BB00, only
+    # 0x4B0 (1200) bytes above our 1616-byte event queue at 0x2000B000.
+    # STM32F103VC provides 48 KiB SRAM ending at 0x2000C000; using its
+    # actual end gives at least 2 KiB of stack below this fixed queue.
+    src = one_replace(src, '_estack = 0x2000BB00;',
+        '_estack = 0x2000C000;', 'full 48-KiB SRAM stack top')
+    return src
 
 
 def patch_makefile(src: str) -> str:
