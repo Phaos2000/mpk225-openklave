@@ -36,6 +36,6 @@ static_assert(usbTxBufferReusable(0x0020u), "NAK means ready");
 static_assert(!usbTxBufferReusable(0x0030u), "VALID may be in flight");
 static_assert(!usbTxBufferReusable(0x00A0u), "CTR_TX not yet acknowledged");
 static_assert(!usbTxBufferReusable(0x8020u), "CTR_RX not yet acknowledged");
-static_assert(usbEpCtrAcknowledgeWrite(0x86B1u)==0x0611u,
+static_assert(usbEpCtrAcknowledgeWrite(0x86B1u)==0x0601u,
               "Endpoint write must clear CTR and leave toggles untouched");
 } // namespace mpk225
