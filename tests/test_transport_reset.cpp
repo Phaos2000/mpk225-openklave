@@ -17,6 +17,7 @@ static void drain(MpkMidiPipeline& p, uint8_t status, unsigned count) {
 }
 int main() {
     MpkMidiPipeline p;
+    assert(p.setChordMode(false)); // explicit passthrough even in smart-build tests
     assert(!p.chordMode());
     assert(p.consume({0xFF,101,60,0}));
     assert(p.queuedMessages()==1);
