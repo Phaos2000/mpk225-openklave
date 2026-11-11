@@ -69,24 +69,34 @@ private:
     HidKeyboardReport report_{};
 };
 
-// For HID idle rate zero, USB host expects a report only when changed.
-// Nonzero idle is deliberately left eligible for retransmission until a
-// verified device millisecond clock can implement exact four-ms intervals.
+// HID 1.12 §7.2.4: idle rate 0 transmits on change only; nonzero idle
+// retransmits an unchanged report after (rate * 4) milliseconds.
+// Millisecond time comes from STM32 USB SOF, not the unverified keybed clock.
 class HidReportTransmitGate {
 public:
-    void reset() { sent_=false; last_=HidKeyboardReport{}; }
-    bool shouldSend(const HidKeyboardReport& now,uint8_t idleRate) const {
-        if(!sent_ || idleRate!=0 || now.modifiers!=last_.modifiers ||
-           now.reserved!=last_.reserved) return true;
-        for(unsigned i=0;i<6;++i) if(now.keys[i]!=last_.keys[i]) return true;
-        return false;
+    void reset() {
+        sent_=false;
+        last_=HidKeyboardReport{};
+        lastSentMs_=0;
     }
-    void markSent(const HidKeyboardReport& now) {
+    bool shouldSend(const HidKeyboardReport& now,uint8_t idleRate,
+                    uint32_t usbMillis) const {
+        if(!sent_ || now.modifiers!=last_.modifiers ||
+           now.reserved!=last_.reserved) return true;
+        for(unsigned i=0;i<6;++i)
+            if(now.keys[i]!=last_.keys[i]) return true;
+        if(idleRate==0) return false;
+        const uint32_t periodMs=static_cast<uint32_t>(idleRate)*4u;
+        return static_cast<uint32_t>(usbMillis-lastSentMs_)>=periodMs;
+    }
+    void markSent(const HidKeyboardReport& now,uint32_t usbMillis) {
         last_=now;
+        lastSentMs_=usbMillis;
         sent_=true;
     }
 private:
     HidKeyboardReport last_{};
+    uint32_t lastSentMs_=0;
     bool sent_=false;
 };
 

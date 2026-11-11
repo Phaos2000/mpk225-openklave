@@ -91,13 +91,14 @@ public:
     bool submitHidIn() {
         if(!configured() || (ep(3)&0x80B0u)!=0x0020u) return false;
         const auto& report=control_.hidKeys().report();
-        if(!hidGate_.shouldSend(report,control_.idleRate())) return false;
+        if(!hidGate_.shouldSend(report,control_.idleRate(),usbMillis_))
+            return false;
         uint8_t bytes[8]{report.modifiers,report.reserved,0,0,0,0,0,0};
         for(unsigned i=0;i<6;++i) bytes[i+2]=report.keys[i];
         pmaWrite(kPmaEp3Tx,bytes,8);
         btWrite(3,1,8);
         setEndpoint(3,0,3); // HID interrupt endpoint IN 0x83
-        hidGate_.markSent(report);
+        hidGate_.markSent(report,usbMillis_);
         return true;
     }
     UsbDeviceState& control() { return control_; }
@@ -106,6 +107,7 @@ public:
     void reset() {
         control_.busReset();
         hidGate_.reset();
+        usbMillis_=0;
         errors_=0;
         hostMidi_.clear();
         ep1Pending_=false;
@@ -133,7 +135,7 @@ public:
         configureEp(1,0x0000,2,0); // bulk EP1 OUT NAK until configured
         configureEp(2,0x0000,0,2); // bulk EP2 IN NAK
         configureEp(3,0x0600,0,2); // interrupt EP3 IN NAK
-        reg(0x40)=0x8400; // CTRM + RESETM, leave other IRQs disabled
+        reg(0x40)=0x8600; // CTRM + RESETM + SOFM, HID idle clock (1ms)
     }
 
     // Interrupt handler. Called only from the USB_LP_CAN1_RX0_IRQHandler.
@@ -142,6 +144,14 @@ public:
         for(unsigned iteration=0;iteration<16;++iteration) {
             const uint16_t pending=reg(0x44);
             if(pending&0x0400u){reset();continue;}
+            // RM0008 USB_ISTR SOF bit 9 and USB_CNTR SOFM bit 9.
+            // Acknowledge only SOF; never clear concurrent CTR/RESET flags.
+            // SOF is delivered by the host every 1ms while the bus is active.
+            if(pending&0x0200u) {
+                ++usbMillis_;
+                reg(0x44)=static_cast<uint16_t>(~0x0200u);
+                continue;
+            }
             if(!(pending&0x8000u)) break;
             const unsigned number=pending&0x000Fu;
             if(number>3) { ++errors_; break; }
@@ -311,6 +321,7 @@ private:
     bool endpointsEnabled_=false,ep1Pending_=false;
     Mpk225HostMidiQueue hostMidi_{};
     HidReportTransmitGate hidGate_{};
+    uint32_t usbMillis_=0;
     uint32_t errors_=0;
 };
 } // namespace mpk225

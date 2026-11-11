@@ -7,19 +7,28 @@ int main() {
     HidKeyboardState state;
     HidReportTransmitGate gate;
     assert(sizeof(state.report())==8);
-    assert(gate.shouldSend(state.report(),0));
-    gate.markSent(state.report());
-    assert(!gate.shouldSend(state.report(),0));
-    assert(gate.shouldSend(state.report(),4)); // nonzero idle allows resend
+    assert(gate.shouldSend(state.report(),0,0));
+    gate.markSent(state.report(),0);
+    assert(!gate.shouldSend(state.report(),0,100000));
+    assert(!gate.shouldSend(state.report(),4,15)); // 4*4ms
+    assert(gate.shouldSend(state.report(),4,16));
+    gate.markSent(state.report(),16);
+    assert(!gate.shouldSend(state.report(),4,31));
+    assert(gate.shouldSend(state.report(),4,32));
     assert(state.press(4));
-    assert(gate.shouldSend(state.report(),0));
-    gate.markSent(state.report());
-    assert(!gate.shouldSend(state.report(),0));
+    assert(gate.shouldSend(state.report(),0,33)); // changed, immediate
+    gate.markSent(state.report(),33);
+    assert(!gate.shouldSend(state.report(),0,49));
     assert(state.release(4));
-    assert(gate.shouldSend(state.report(),0));
-    gate.markSent(state.report());
+    assert(gate.shouldSend(state.report(),0,49)); // release immediate
+    gate.markSent(state.report(),49);
     gate.reset();
-    assert(gate.shouldSend(state.report(),0));
+    assert(gate.shouldSend(state.report(),0,49)); // bus reset
+    gate.markSent(state.report(),0xFFFFFFFEu);
+    assert(!gate.shouldSend(state.report(),4,13)); // rollover after 15ms
+    assert(gate.shouldSend(state.report(),4,14)); // rollover after 16ms
+    gate.markSent(state.report(),14);
+    assert(gate.shouldSend(state.report(),255,1034)); // max idle=1020ms
     for(unsigned i=0;i<8;++i) assert(state.press(static_cast<uint8_t>(0xE0+i)));
     assert(state.report().modifiers==0xFFu);
     assert(state.release(0xE2) && state.release(0xE7));

@@ -18,5 +18,7 @@ int main(){
     assert(!controller.popHostMidi(packet));
     // The controller state itself is safe to test without MMIO.
     assert(!controller.control().configured());
+    // USB full-speed SOF is the 1ms source used for HID SET_IDLE; no host
+    // MMIO accesses are performed by this compile-only test.
     std::puts("PASS: native USB driver builds on host; PMA layout stays inside 512 B");
 }
