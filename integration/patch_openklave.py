@@ -115,6 +115,17 @@ def patch_kernel(src: str) -> str:
     reset = one_replace(reset, 'b->count_tx= 4;', 'b->count_tx= 0;',
                         'EP1 TX empty on USB reset')
     src = src[:a] + reset + src[b:]
+    # OpenKlave's device descriptor is declared in an unusual pre-swap
+    # order; NewDeviceConfiguration swaps USB multi-byte fields into little
+    # endian PMA bytes. 0x00,0x23 -> 0x23,0x00 -> USB PID 0x0023.
+    # Only the MPK225 factory-scan lab build identifies as MPK225.
+    src = one_replace(src, '0x00, 0x24, //idProduct',
+                      '#if MPK225_FACTORY_KEYBED\n'
+                      '    0x00, 0x23, //model-1 MPK225 PID (PMA permutation -> 23 00)\n'
+                      '#else\n'
+                      '    0x00, 0x24, //MPK249 reference PID (PMA permutation -> 24 00)\n'
+                      '#endif',
+                      'model-specific USB device PID')
     # Do NOT reuse OpenKlave's unchecked raw scan lookup. Preserve only its
     # published MPK249 mapping, explicitly rejecting unmapped codes and unknown
     # event types; this is NOT MPK225 keybed validation.
