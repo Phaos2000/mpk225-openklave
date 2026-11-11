@@ -27,6 +27,8 @@ jobs:
           python3 tests/test_patch_tool.py
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 tests/test_chord_boot_variant.cpp -o /tmp/test_chord_boot_enabled
           /tmp/test_chord_boot_enabled
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 tests/test_embedded_smart.cpp -o /tmp/test_smart_embedded
+          /tmp/test_smart_embedded
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude tools/mpk225_live_chords_win.cpp -o /tmp/mpk225_host_bridge
           /tmp/mpk225_host_bridge --selftest
       - name: Install Cortex-M3 compiler (no device access)
@@ -65,6 +67,14 @@ jobs:
           fi
           arm-none-eabi-size /tmp/led-mpk225-model1-not-installable.elf
           sha256sum /tmp/led-mpk225-model1-not-installable.elf
+          make -B -C /tmp/openklave-candidate/src led.elf CHORD_ON_BOOT=1 FACTORY_SCAN=1 SMART_ON_BOOT=1
+          cp /tmp/openklave-candidate/src/led.elf /tmp/led-mpk225-smart-not-installable.elf
+          if cmp -s /tmp/led-mpk225-model1-not-installable.elf /tmp/led-mpk225-smart-not-installable.elf; then
+            echo "ERROR: smart chord flag did not change Cortex-M3 executable"
+            exit 1
+          fi
+          arm-none-eabi-size /tmp/led-mpk225-smart-not-installable.elf
+          sha256sum /tmp/led-mpk225-smart-not-installable.elf
       - name: Verify firmware release actions remain disabled
         run: |
           ! grep -q 'python ../util/wipe_os.py' /tmp/openklave-candidate/src/Makefile
