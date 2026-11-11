@@ -76,6 +76,37 @@ jobs:
             exit 1
           fi
           arm-none-eabi-size /tmp/led-mpk225-smart-not-installable.elf
+          arm-none-eabi-nm /tmp/led-mpk225-smart-not-installable.elf | grep -Ei '^2000c000 [Aa] _estack
+          sha256sum /tmp/led-mpk225-smart-not-installable.elf
+          arm-none-eabi-objcopy --dump-section .mySegment=/tmp/mpk225-boot-signature.bin /tmp/led-mpk225-smart-not-installable.elf
+          python3 -c 'from pathlib import Path; sig=Path("/tmp/mpk225-boot-signature.bin").read_bytes(); assert sig==bytes.fromhex("414434415f5269636861726400010002"), "Boot signature does not match official Akai v1.02 16-byte token"'
+      - name: Verify firmware release actions remain disabled
+        run: |
+          ! grep -q 'python ../util/wipe_os.py' /tmp/openklave-candidate/src/Makefile
+          ! grep -q 'python ../util/flash_os.py' /tmp/openklave-candidate/src/Makefile
+          grep -q 'Disabled: MPK225 recovery not verified' /tmp/openklave-candidate/src/Makefile
+
+  windows-live-bridge:
+    runs-on: windows-2022
+    timeout-minutes: 12
+    steps:
+      - name: Checkout same chord engine source
+        uses: actions/checkout@v4
+      - name: Build native WinMM audition program and run offline selftest
+        shell: cmd
+        run: |
+          call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cl /nologo /std:c++17 /EHsc /O2 /W4 /MT /Iinclude tools\mpk225_live_chords_win.cpp /link winmm.lib user32.lib /OUT:MPK225-Live-Chords.exe
+          MPK225-Live-Chords.exe --selftest
+          MPK225-Live-Chords.exe --suggest G --tonic C --scale major --filter strict
+          MPK225-Live-Chords.exe --suggest all --tonic C --scale major --filter strict
+      - name: Publish host-side executable for stock-firmware testing
+        uses: actions/upload-artifact@v4
+        with:
+          name: MPK225-Live-Chords-Win64-NOT-FIRMWARE
+          path: MPK225-Live-Chords.exe
+          retention-days: 7
+
           sha256sum /tmp/led-mpk225-smart-not-installable.elf
           arm-none-eabi-objcopy --dump-section .mySegment=/tmp/mpk225-boot-signature.bin /tmp/led-mpk225-smart-not-installable.elf
           python3 -c 'from pathlib import Path; sig=Path("/tmp/mpk225-boot-signature.bin").read_bytes(); assert sig==bytes.fromhex("414434415f5269636861726400010002"), "Boot signature does not match official Akai v1.02 16-byte token"'
