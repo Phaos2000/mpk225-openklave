@@ -63,7 +63,14 @@ public:
                                                unsigned packetBytes) {
         return Mpk225HostMidiQueue::fits(queued,packetBytes);
     }
-    // Incoming from host, four USB-MIDI bytes incl cable/CIN nibble.
+    // Examine before delivering. No MPK225 DIN/Remote destination is mapped
+    // until independently verified; retain undeliverable packets and NAK
+    // upstream instead of silently discarding them. Caller masks USB IRQ
+    // throughout peek, hardware accept, and pop.
+    bool peekHostMidi(UsbMidiOutEvent& out) const {
+        return hostMidi_.peek(out);
+    }
+    // Complete an accepted incoming four-byte MIDI event.
     bool popHostMidi(UsbMidiOutEvent& out) {
         if(!hostMidi_.pop(out)) return false;
         // The caller must mask the USB IRQ before touching this FIFO.
@@ -84,11 +91,13 @@ public:
     bool submitHidIn() {
         if(!configured() || (ep(3)&0x80B0u)!=0x0020u) return false;
         const auto& report=control_.hidKeys().report();
+        if(!hidGate_.shouldSend(report,control_.idleRate())) return false;
         uint8_t bytes[8]{report.modifiers,report.reserved,0,0,0,0,0,0};
         for(unsigned i=0;i<6;++i) bytes[i+2]=report.keys[i];
         pmaWrite(kPmaEp3Tx,bytes,8);
         btWrite(3,1,8);
         setEndpoint(3,0,3); // HID interrupt endpoint IN 0x83
+        hidGate_.markSent(report);
         return true;
     }
     UsbDeviceState& control() { return control_; }
@@ -96,6 +105,7 @@ public:
     // Called by the STM32 USB RESET interrupt; no SysEx or flash operations.
     void reset() {
         control_.busReset();
+        hidGate_.reset();
         errors_=0;
         hostMidi_.clear();
         ep1Pending_=false;
@@ -250,6 +260,7 @@ private:
             // SET_CONFIGURATION (including a repeated value) resets all
             // non-control endpoint traffic, not just their readiness.
             hostMidi_.clear();
+            hidGate_.reset();
             ep1Pending_=false;
             // The host restarts bulk/interrupt DATA0 after SET_CONFIGURATION.
             // A STAT-only transition would retain stale DTOG and CTR bits,
@@ -299,6 +310,7 @@ private:
     UsbDeviceState control_{};
     bool endpointsEnabled_=false,ep1Pending_=false;
     Mpk225HostMidiQueue hostMidi_{};
+    HidReportTransmitGate hidGate_{};
     uint32_t errors_=0;
 };
 } // namespace mpk225

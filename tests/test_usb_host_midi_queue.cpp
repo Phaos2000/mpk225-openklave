@@ -7,6 +7,8 @@ int main() {
     Mpk225HostMidiQueue q;
     unsigned invalid=99;
     assert(q.size()==0);
+    UsbMidiOutEvent held{};
+    assert(!q.peek(held));
     uint8_t frame[64]{};
     for(unsigned i=0;i<16;++i) {
         frame[i*4]=static_cast<uint8_t>(((i%4)<<4)|9u);
@@ -20,8 +22,12 @@ int main() {
     }
     assert(!q.appendFrame(frame,64,invalid) && q.size()==64);
     UsbMidiOutEvent event{};
+    assert(q.peek(held) && held.data[2]==48);
+    assert(q.peek(held) && q.size()==64); // destination refused: no pop
     for(unsigned i=0;i<48;++i) {
+        assert(q.peek(held));
         assert(q.pop(event) && event.knownCable());
+        for(unsigned k=0;k<4;++k) assert(event.data[k]==held.data[k]);
         assert(event.cable()==(i%16u)%4u);
         assert(event.cin()==9 && event.data[2]==48+(i%16u));
     }

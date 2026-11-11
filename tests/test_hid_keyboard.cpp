@@ -5,7 +5,21 @@ using namespace mpk225;
 int main() {
     static_assert(sizeof(kHidKeyboardReportDescriptor)==63,"HID descriptor");
     HidKeyboardState state;
+    HidReportTransmitGate gate;
     assert(sizeof(state.report())==8);
+    assert(gate.shouldSend(state.report(),0));
+    gate.markSent(state.report());
+    assert(!gate.shouldSend(state.report(),0));
+    assert(gate.shouldSend(state.report(),4)); // nonzero idle allows resend
+    assert(state.press(4));
+    assert(gate.shouldSend(state.report(),0));
+    gate.markSent(state.report());
+    assert(!gate.shouldSend(state.report(),0));
+    assert(state.release(4));
+    assert(gate.shouldSend(state.report(),0));
+    gate.markSent(state.report());
+    gate.reset();
+    assert(gate.shouldSend(state.report(),0));
     for(unsigned i=0;i<8;++i) assert(state.press(static_cast<uint8_t>(0xE0+i)));
     assert(state.report().modifiers==0xFFu);
     assert(state.release(0xE2) && state.release(0xE7));

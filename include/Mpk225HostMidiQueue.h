@@ -33,6 +33,13 @@ public:
         }
         return true;
     }
+    // Inspect without removing. A physical MIDI sink acknowledges only once
+    // its complete packet has been accepted; a rejected packet stays queued.
+    bool peek(UsbMidiOutEvent& out) const {
+        if (!count_) return false;
+        out=packets_[head_];
+        return true;
+    }
     bool pop(UsbMidiOutEvent& out) {
         if(!count_) return false;
         out=packets_[head_];
