@@ -49,6 +49,14 @@ constexpr PMAAllocation mouseTry = fixture();
 constexpr PMAAllocation mouseHID = fixture();
 constexpr PMAAllocation USBMidi  = fixture();
 GlobalEventStack->capacity = 100;
+int start(){
+    while(1){
+
+    };
+
+}
+
+#endif
 ''')
     (base/'src/main.c').write_text('''#include "kernel.h"
 
@@ -150,6 +158,10 @@ burn:
     assert '-nostartfiles -nodefaultlibs' in mk
     assert '-Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group' in mk
     assert 'GlobalEventStack->scratch_3 = 0;' in k
+    assert 'int start(){' in k
+    assert '    return 0;\n\n}\n\n#endif' in k
+    assert '    while(1){\n\n    };' not in k
+    assert '    ConsumeNoteEventStackAndTransmitNotesOverUSB();' in main
     assert 'MakeAkaiSysex test.elf' not in mk
     assert 'Disabled: MPK225 recovery not verified' in mk
     ld = (out/'src/stm32_flash.ld').read_text()
