@@ -108,7 +108,7 @@ burn:
     assert '(NewDeviceConfiguration(dev_descriptor).a[5] & 0xFFFFu) == 0x0023u' in k
     assert '(NewDeviceConfiguration(dev_descriptor).a[5] & 0xFFFFu) == 0x0024u' in k
     assert '(NewDeviceConfiguration(dev_descriptor).a[4] & 0xFFFFu) == 0x09E8u' in k
-    assert 'mpk225::contactVelocityFromWord(event)' in k
+    assert 'mpk225::contactVelocityFromWordForNote(event, static_cast<uint8_t>(val))' in k
     assert '#if MPK225_FACTORY_KEYBED' in k
     assert 'Event e = {0xFF,velocity,val,0};' in k
     assert 'Event e = {0xFF,100,val,0};' not in k
