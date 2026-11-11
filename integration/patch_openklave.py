@@ -47,7 +47,12 @@ void ResetMidiForUsbBus(){
 // remains unverified on the MPK225. Never update on each note or USB ISR.
 void UpdateSmartChordDisplay(){
 #if MPK225_FACTORY_KEYBED
+  // The USB reset/endpoint ISR can preempt this foreground PMA write.
+  // Preserve the prior IRQ mask; MIDI IN already uses the same discipline.
+  const uint32_t hidMask=__get_PRIMASK();
+  __disable_irq();
   (void)Mpk225NativeUsb.submitHidIn();
+  __set_PRIMASK(hidMask);
 #endif
 #if MPK225_CANDIDATE_PANEL_BUTTONS
   static bool first = true;

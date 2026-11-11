@@ -108,6 +108,14 @@ burn:
     assert 'Mpk225NativeUsb.submitMidiIn(bulk.bytes,bulk.length)' in k
     assert 'OpenKlaveMidiBridge.takeUsbBulkFrame();' in k
     assert 'Mpk225NativeUsb.submitHidIn();' in k
+    # The HID foreground writer must not race the IRQ's USB RESET or
+    # transfer-complete state changes while touching endpoint PMA/BTABLE.
+    hid_update=k[k.index('void UpdateSmartChordDisplay(){'):
+                 k.index('void ConsumeNoteEventStackAndTransmitNotesOverUSB(){')]
+    assert hid_update.index('const uint32_t hidMask=__get_PRIMASK();') < \
+           hid_update.index('__disable_irq();') < \
+           hid_update.index('Mpk225NativeUsb.submitHidIn();') < \
+           hid_update.index('__set_PRIMASK(hidMask);')
     assert k.index('static mpk225::Mpk225UsbHardware Mpk225NativeUsb{};') < k.index('void usbReset(void){')
     assert 'void usb(){\n#if MPK225_FACTORY_KEYBED' in k
     assert '#endif\n}' in k
