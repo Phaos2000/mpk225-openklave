@@ -76,10 +76,13 @@ def patch_kernel(src: str) -> str:
     # OpenKlave keeps a pointer to these descriptors between USB IRQ calls.
     # Function-local constexpr objects have automatic storage duration;
     # make them static to prevent a dangling descriptor pointer.
-    for name in ('deviceDescriptor', 'mouseTry', 'mouseHID', 'USBMidi'):
+    for name in ('deviceDescriptor', 'mouseTry', 'mouseHID'):
         src = one_replace(src, 'constexpr PMAAllocation ' + name + ' =',
                           'static constexpr PMAAllocation ' + name + ' =',
                           'USB descriptor lifetime: ' + name)
+    src = one_replace(src, 'constexpr PMAAllocation USBMidi  =',
+                      'static constexpr PMAAllocation USBMidi  =',
+                      'USB descriptor lifetime: USBMidi')
     src = one_replace(src, 'GlobalEventStack->capacity = 100;',
         'GlobalEventStack->capacity = 100;\n    GlobalEventStack->scratch_2 = 0;\n    GlobalEventStack->scratch_3 = 0;',
         'FIFO head/tail init')
