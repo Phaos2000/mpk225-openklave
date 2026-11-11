@@ -68,7 +68,8 @@ int main() {
     assert(!usb.configured());
     statusIn(usb);assert(usb.configured());
     assert(usb.configurationEpoch()==initialEpoch+1);
-    for(unsigned endpoint : {0x00u,0x80u,0x01u,0x82u,0x83u}) {
+    constexpr unsigned endpointAddresses[]={0x00u,0x80u,0x01u,0x82u,0x83u};
+    for(unsigned endpoint : endpointAddresses) {
         assert(usb.setup({0x82,0,0,static_cast<uint16_t>(endpoint),2}));
         const auto status=usb.nextIn();
         assert(status.valid && status.size==2);
