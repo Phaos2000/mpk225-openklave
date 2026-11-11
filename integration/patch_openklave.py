@@ -194,9 +194,9 @@ def patch_kernel(src: str) -> str:
         '    return;\n'
         '#else',
         'replace MPK225 USB IRQ service')
-    src = one_replace(src, '\n}\n\nvolatile uint32_t * record =',
-        '\n#endif\n}\n\nvolatile uint32_t * record =',
-        'end of MPK225/native USB split')
+    usb_start=src.index('void usb(){')
+    usb_end=src.index('\n}',usb_start)
+    src=src[:usb_end]+'\n#endif'+src[usb_end:]
     # Akai official v1.02 shared image has EXACTLY 16 bytes at 0x08033800:
     # 41 44 34 41 5F 52 69 63 68 61 72 64 00 01 00 02
     # OpenKlave's upstream token omitted the separator byte (15 bytes).
