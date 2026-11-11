@@ -59,7 +59,7 @@ int main(void) {
   }
 }
 ''')
-    (base/'src/stm32_flash.ld').write_text('FLASH (rx): ORIGIN = 0x08006000, LENGTH = 256k')
+    (base/'src/stm32_flash.ld').write_text('_estack = 0x2000BB00;\nFLASH (rx): ORIGIN = 0x08006000, LENGTH = 256k')
     (base/'src/Makefile').write_text('''CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER
 CFLAGS += -I.
 led.elf:
@@ -145,6 +145,9 @@ burn:
     assert 'MakeAkaiSysex test.elf' not in mk
     assert 'Disabled: MPK225 recovery not verified' in mk
     ld = (out/'src/stm32_flash.ld').read_text()
+    assert '_estack = 0x2000C000;' in ld
+    assert '_estack = 0x2000BB00;' not in ld
+    assert (0x2000C000 - 0x2000B000 - 0x800) >= 0x800
     assert 'ORIGIN = 0x08006000, LENGTH = 0x2E000' in ld
     assert '0x3A000' not in ld, 'Cannot include persistent preset region'
     assert 0x08006000 + 0x2E000 == 0x08034000
