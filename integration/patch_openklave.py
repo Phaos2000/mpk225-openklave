@@ -43,6 +43,22 @@ void ResetMidiForUsbBus(){
   gEventQueueNeedsPanic = 0; // the old connection can no longer sound notes
 }
 
+// For opt-in panel/LCD lab builds only. The inherited MPK249 LCD bus
+// remains unverified on the MPK225. Never update on each note or USB ISR.
+void UpdateSmartChordDisplay(){
+#if MPK225_CANDIDATE_PANEL_BUTTONS
+  static bool first = true;
+  if (!first && !OpenKlaveMidiBridge.panelDirty()) return;
+  first = false;
+  char line[17]{};
+  mpk225::formatSmartChordStatus(line, OpenKlaveMidiBridge.tonic(),
+      OpenKlaveMidiBridge.scale(), OpenKlaveMidiBridge.filter());
+  clearScreen();
+  writeString(line);
+  OpenKlaveMidiBridge.clearPanelDirty();
+#endif
+}
+
 // Main-loop-owned MIDI transmission. The USB interrupt handler acknowledges
 // successful EP1 transfers ONLY; it never consumes MIDI or writes PMA.
 // Queue producer(s) run in IRQ context, so the ring is read/changed with
@@ -98,7 +114,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -232,11 +248,13 @@ def patch_main(src: str) -> str:
     # to initiate an IN packet without waiting for a previous transfer.
     src = one_replace(src, '#include "kernel.h"',
                       '#include "kernel.h"\n'
-                      'void ConsumeNoteEventStackAndTransmitNotesOverUSB();',
+                      'void ConsumeNoteEventStackAndTransmitNotesOverUSB();\n'
+                      'void UpdateSmartChordDisplay();',
                       'foreground USB MIDI service declaration')
     src = one_replace(src, '  while(1){\n\n  }',
                       '  while(1){\n'
                       '    ConsumeNoteEventStackAndTransmitNotesOverUSB();\n'
+                      '    UpdateSmartChordDisplay();\n'
                       '  }',
                       'start first USB IN transfer from main loop')
     return src
@@ -329,7 +347,8 @@ def main() -> int:
     for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h',
                  'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h',
                  'Mpk225FactoryKeybedDecoder.h', 'KeybedContactVelocity.h',
-                 'EmbeddedSmartChordController.h', 'Stm32UsbTxGate.h'):
+                 'EmbeddedSmartChordController.h', 'Stm32UsbTxGate.h',
+                 'SmartChordDisplay.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK225 timing/velocity curve and USB IRQ still need hardware validation; recovery NOT verified.')
