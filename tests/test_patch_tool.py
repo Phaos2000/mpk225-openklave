@@ -14,7 +14,7 @@ void usb(){\n}
 constexpr PMAAllocation deviceDescriptor = fixture();
 constexpr PMAAllocation mouseTry = fixture();
 constexpr PMAAllocation mouseHID = fixture();
-constexpr PMAAllocation USBMidi = fixture();
+constexpr PMAAllocation USBMidi  = fixture();
 GlobalEventStack->capacity = 100;
 ''')
     (base/'src/stm32_flash.ld').write_text('FLASH (rx): ORIGIN = 0x08006000, LENGTH = 256k')
