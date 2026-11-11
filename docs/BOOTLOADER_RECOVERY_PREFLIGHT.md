@@ -36,6 +36,24 @@ The signature region is a **subset** of the application partition, not an extra 
 - The official MPK249/261 package provides **application** bytes from `0x08006000`, but does **not contain a factory bootloader backup**. It is not a full-device restore image.
 - The public OpenKlave repository's `util` directory contains a GDB readback *script*, but no factory bootloader dump. It cannot replace a backup of the user's device.
 
+## Additional metadata validation (offline, reproducible)
+
+Reran the Intel HEX/SysEx parser against the supplied official Windows ZIP:
+
+- **181,988 specified image bytes**, all HEX records checksum-valid; three disjoint flash spans:
+  - `0x08006000–0x080326CF`: 181,968 application bytes
+  - `0x08033800–0x0803380F`: 16-byte token `AD4A_Richard\x00\x01\x00\x02`
+  - `0x08033FFC–0x08033FFF`: four bytes `00 00 00 76`
+- The updater's `.upd` embeds the same `.syx` image and includes update-mode messages for model IDs 0x23, 0x24 and 0x25.
+- Neither the archive's HEX image nor the `.syx` supplies bytes for the bootloader region.
+- The four-byte value `00 00 00 76` did **not** match CRC32 or Adler-32 of the basic contiguous application/padded-image variants tested. Its meaning is **unresolved**, and no other checksum scheme was ruled out.
+
+The ZIP must not be represented as a complete flash backup, and application acceptance may depend on checks in the unexamined bootloader beyond the signature.
+
+### Offline regression result
+
+Applied the exact developer-branch linker/test corrections to the pre-existing v0.2 packaged fixture and ran `tests/test_patch_tool.py` plus Python syntax checks. **Both passed.** This validates the guarded patch fixture and boundary check, **not** an ARM firmware build or device recovery.
+
 ## Outcome
 
 **Firmware flashing is blocked.** We can continue Windows-side chord engine and MIDI interface development safely, while the hardware/recovery path remains unresolved. Never describe this as a verified MPK225 firmware backup or safe recovery process.
