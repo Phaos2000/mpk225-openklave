@@ -36,7 +36,8 @@ int main() {
         auto d=factoryGetDescriptor({0x80,6,static_cast<uint16_t>(0x0300u+i),0x0409,255});
         assert(d.bytes && d.count>=4 && d.count==d.bytes[0] && d.bytes[1]==3);
         assert(d.count<=34 && (d.count%2)==0);
-        for(unsigned j=3;j<d.count;j+=2)assert(d.bytes[j]==0);
+        if (i==0) { assert(d.count==4 && d.bytes[2]==0x09 && d.bytes[3]==0x04); }
+        else for(unsigned j=3;j<d.count;j+=2)assert(d.bytes[j]==0);
         stream(d,d.count);
     }
     // Unsupported requests or wrong HID interface do not impersonate data.
