@@ -52,6 +52,9 @@ burn:
     assert 'OpenKlaveEventQueue.h' in k
     assert 'MpkMidiPipeline.h' in k
     assert (out/'src/KeybedReferenceDecoder.h').is_file()
+    assert (out/'src/Mpk225FactoryKeybedDecoder.h').is_file()
+    assert '#if MPK225_FACTORY_KEYBED' in k
+    assert 'decodeMpk225FactoryScan(event)' in k
     assert 'decodeMpk249ReferenceScan(event)' in k
     assert 'if (!decoded.valid) return;' in k
     assert 'if (!decoded.down)' in k
@@ -63,6 +66,8 @@ burn:
     for n in ('deviceDescriptor', 'mouseTry', 'mouseHID', 'USBMidi'):
         assert 'static constexpr PMAAllocation ' + n in k
     assert 'CHORD_ON_BOOT ?= 0' in mk
+    assert 'FACTORY_SCAN ?= 0' in mk
+    assert '-DMPK225_FACTORY_KEYBED=$(FACTORY_SCAN)' in mk
     assert '-DMPK225_CANDIDATE_CHORD_ON_BOOT=$(CHORD_ON_BOOT)' in mk
     assert '-nostartfiles -nodefaultlibs' in mk
     assert '-Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group' in mk
