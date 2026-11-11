@@ -35,6 +35,12 @@ void CheckKeyBed(){
     consume(val);
   }
 }
+static constexpr uint8_t dev_descriptor[] = {
+  0x09, 0xe8, //idVendor
+  0x00, 0x24, //idProduct
+};
+constexpr PMAAllocation NewDeviceConfiguration(const uint8_t* src){ return {}; }
+// Make a ConfigurationDescriptor into new PMA Allocation.
 constexpr PMAAllocation deviceDescriptor = fixture();
 constexpr PMAAllocation mouseTry = fixture();
 constexpr PMAAllocation mouseHID = fixture();
@@ -96,6 +102,12 @@ burn:
     assert 'b->count_tx= 0;' in k
     assert '__disable_irq()' in k and '__set_PRIMASK' in k
     assert 'static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};' in k
+    assert '#if MPK225_FACTORY_KEYBED' in k
+    assert '0x00, 0x23, //model-1 MPK225 PID' in k
+    assert '0x00, 0x24, //MPK249 reference PID' in k
+    assert '(NewDeviceConfiguration(dev_descriptor).a[5] & 0xFFFFu) == 0x0023u' in k
+    assert '(NewDeviceConfiguration(dev_descriptor).a[5] & 0xFFFFu) == 0x0024u' in k
+    assert '(NewDeviceConfiguration(dev_descriptor).a[4] & 0xFFFFu) == 0x09E8u' in k
     assert 'mpk225::contactVelocityFromWord(event)' in k
     assert '#if MPK225_FACTORY_KEYBED' in k
     assert 'Event e = {0xFF,velocity,val,0};' in k
