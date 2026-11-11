@@ -10,7 +10,7 @@
 - All **11,384 HEX records** have valid checksums: 11,375 data, 7 extended-linear-address, 1 start-address, 1 EOF. There are **181,988 specified flash bytes**, including 20 bytes of end metadata.
 - Exactly the same `.syx` message is embedded inside `.upd` beginning at file offset **564**.
 - The `.upd` includes three separate 8-byte update-mode messages addressed to `23` (MPK225), `24` (MPK249), and `25` (MPK261), but there is **no standalone MPK225 update-mode .syx** in this Windows ZIP.
-- One image with MPK249 device header does **not prove** compatibility with MPK225, nor how the updater handles model routing.
+- The SysEx envelope is addressed as MPK249, but the **executable itself has an MPK225 hardware variant, USB identity and 25-key mapping**. This establishes MPK225 support inside the application; whether the package is a safe MPK225 recovery image remains unverified.
 
 ## Flash image map (decoded, Intel HEX addresses)
 
@@ -58,7 +58,7 @@ Two static groups each contain **25 recognizable eight-character preset names**,
 - Bank A: `0801F30E + index * 0x60A` (`index=0..24`)
 - Bank B: `08028AD0 + index * 0x60A` (`index=0..24`)
 
-The names include LiveLite, MpcEsntl, Hybrid 3, ProTools, ScalePad and Generic. Most names match across groups; one differs (`DarkPad` / `DarkPads`). The fixed 1,546-byte stride is also used by firmware code. The two groups represent **~77,300 bytes (75.49 KiB)** of embedded preset records. Their relationship to the hardware models has **not** been fully determined.
+The names include LiveLite, MpcEsntl, Hybrid 3, ProTools, ScalePad and Generic. Most names match across groups; one differs (`DarkPad` / `DarkPads`). The fixed 1,546-byte stride is also used by firmware code. The two groups represent **~77,300 bytes (75.49 KiB)** of embedded preset records. **Verified further:** executable at `08008A2C` selects Bank B for internal variant 1 (MPK225) and Bank A for variants 2/3 (MPK249/MPK261). See [MPK225 model identification](MPK225_MODEL_IDENTIFICATION_V102.md).
 
 This makes factory preset tables a credible major flash-budget opportunity for a *new* firmware design. It does not demonstrate a patchable free area within the factory program.
 
@@ -70,7 +70,7 @@ As an *offline compressibility experiment only* (Python zlib level 9), the combi
 
 ## Model compatibility warning
 
-Akai's [firmware support page](https://support.akaipro.com/en/support/solutions/articles/69000831517-akai-pro-mpk249-and-mpk261-updating-firmware-for-m1-compatibility) inconsistently mentions MPK225 but titles the update MPK249/261. Akai's [macOS compatibility table](https://support.akaipro.com/en/support/solutions/articles/69000824929-akai-pro-macos-13-ventura-compatibility) specifically says MPK249/261 need firmware v1.02 for Apple Silicon, while MPK225 is already listed compatible. The supplied ZIP contains only an MPK249/261-named application image with `0x24` SysEx target. **Do not send this firmware/update-mode payload to an MPK225.**
+Akai's [firmware support page](https://support.akaipro.com/en/support/solutions/articles/69000831517-akai-pro-mpk249-and-mpk261-updating-firmware-for-m1-compatibility) inconsistently mentions MPK225 but titles the update MPK249/261. Akai's [macOS compatibility table](https://support.akaipro.com/en/support/solutions/articles/69000824929-akai-pro-macos-13-ventura-compatibility) specifically says MPK249/261 need firmware v1.02 for Apple Silicon, while MPK225 is already listed compatible. The supplied ZIP contains only an MPK249/261-named application image with `0x24` SysEx target, although that **same executable** includes MPK225-specific application logic. This resolves the code-sharing question but does not establish the bootloader/update compatibility or a recovery path. **Do not send the firmware/update-mode payload to an MPK225 on this evidence alone.**
 
 ## Further disassembly: hardware variant selection and flash granularity
 
@@ -82,4 +82,4 @@ ST's [RM0008 reference manual](https://www.st.com/resource/en/reference_manual/r
 
 For our **future MPK225 custom firmware**, a small chord/voice-leading engine is very plausible given the physical MCU. The main constraints are proving the MPK225's own flash layout, bootloader/recovery, keybed/pad handling, and allocating persistent data without destroying factory presets. Replacing redundant preset tables, and using a compact preset format, could make substantially more room for sophisticated chord logic and sequencer storage than the current OS exposes.
 
-**Unresolved:** MPK225-specific firmware bytes and actual RAM layout; factory bootloader backup/readout; hardware-specific model selection; which exact flash pages can safely be repurposed. No device-modifying action is authorized by this audit.
+**Unresolved:** Whether the owner's MPK225 runs byte-identical application firmware and has the same RAM initialization; factory bootloader backup/readout; observed strap-pin state on MPK225; which exact flash pages can safely be repurposed. No device-modifying action is authorized by this audit.
