@@ -68,11 +68,26 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
         '\nvoid usb(){', BRIDGE, 'MIDI->USB bridge')
+    # Do NOT reuse OpenKlave's unchecked raw scan lookup. Preserve only its
+    # published MPK249 mapping, explicitly rejecting unmapped codes and unknown
+    # event types; this is NOT MPK225 keybed validation.
+    src = block_replace(src, 'unsigned int decodeMPK249NoteValue(uint32_t u){',
+                        '\nvoid CheckKeyBed(){',
+                        '// MPK249 reference scan ranges now in KeybedReferenceDecoder.h\n',
+                        'remove unsafe MPK249 scan table')
+    src = one_replace(src, '  uint32_t val = (decodeMPK249NoteValue(event));',
+                      '  const auto decoded = mpk225::decodeMpk249ReferenceScan(event);\n'
+                      '  if (!decoded.valid) return;\n'
+                      '  const uint32_t val = decoded.midiNote;',
+                      'guard invalid key scan and type')
+    src = one_replace(src, 'if ((event & 0x000000FF) == 0xFE){',
+                      'if (!decoded.down){',
+                      'use validated action in keybed handler')
     # OpenKlave keeps a pointer to these descriptors between USB IRQ calls.
     # Function-local constexpr objects have automatic storage duration;
     # make them static to prevent a dangling descriptor pointer.
@@ -146,7 +161,7 @@ def main() -> int:
     for name, contents in files.items():
         (out / name).write_text(contents)
     for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h',
-                 'SmartHarmony.h', 'VoicingPlanner.h'):
+                 'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK249 keymap, fixed key velocity, USB IRQ, and MPK225 recovery NOT verified.')
