@@ -126,7 +126,8 @@ def main() -> int:
     shutil.copytree(base, out)
     for name, contents in files.items():
         (out / name).write_text(contents)
-    for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h'):
+    for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h',
+                 'SmartHarmony.h', 'VoicingPlanner.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK249 keymap, fixed key velocity, USB IRQ, and MPK225 recovery NOT verified.')
