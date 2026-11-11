@@ -25,6 +25,8 @@ jobs:
             "/tmp/${test%.cpp}"
           done
           python3 tests/test_patch_tool.py
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 tests/test_chord_boot_variant.cpp -o /tmp/test_chord_boot_enabled
+          /tmp/test_chord_boot_enabled
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude tools/mpk225_live_chords_win.cpp -o /tmp/mpk225_host_bridge
           /tmp/mpk225_host_bridge --selftest
       - name: Install Cortex-M3 compiler (no device access)
@@ -45,6 +47,11 @@ jobs:
           make -C /tmp/openklave-candidate/src led.elf
           arm-none-eabi-size /tmp/openklave-candidate/src/led.elf
           arm-none-eabi-objdump -h /tmp/openklave-candidate/src/led.elf
+          cp /tmp/openklave-candidate/src/led.elf /tmp/led-passthrough-not-installable.elf
+          make -B -C /tmp/openklave-candidate/src led.elf CHORD_ON_BOOT=1
+          arm-none-eabi-size /tmp/openklave-candidate/src/led.elf
+          arm-none-eabi-readelf -s /tmp/openklave-candidate/src/led.elf | grep -E 'OpenKlaveMidiBridge|ConsumeNote' || true
+          cp /tmp/openklave-candidate/src/led.elf /tmp/led-chord-on-boot-not-installable.elf
       - name: Verify firmware release actions remain disabled
         run: |
           ! grep -q 'python ../util/wipe_os.py' /tmp/openklave-candidate/src/Makefile
