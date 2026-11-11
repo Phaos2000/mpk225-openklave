@@ -35,6 +35,16 @@ def block_replace(text: str, before: str, after: str, new: str, label: str) -> s
 
 BRIDGE = r'''static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};
 
+// A USB reset invalidates every queued packet and held note on the old bus.
+// The reset interrupt calls this while foreground MIDI servicing is paused.
+void ResetMidiForUsbBus(){
+  OpenKlaveMidiBridge.resetForUsbBus();
+  if (GlobalEventStack->capacity == 100) {
+    GlobalEventStack->scratch_2 = 0;
+    GlobalEventStack->scratch_3 = 0;
+  }
+}
+
 // Main-loop-owned MIDI transmission. The USB interrupt handler acknowledges
 // successful EP1 transfers ONLY; it never consumes MIDI or writes PMA.
 // Queue producer(s) run in IRQ context, so the ring is read/changed with
@@ -84,7 +94,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -109,6 +119,10 @@ def patch_kernel(src: str) -> str:
     a = src.index('void usbReset(void){')
     b = src.index('\nvoid writeNumberToScreen(', a)
     reset = src[a:b]
+    reset = one_replace(reset, '    amIInASetAddressTransaction = 0;',
+                        '    amIInASetAddressTransaction = 0;\n'
+                        '    ResetMidiForUsbBus();',
+                        'drop stale MIDI state on bus reset')
     reset = one_replace(reset, 'NAK, VALID, INTERRUPT, 1',
                         'NAK, NAK, INTERRUPT, 1',
                         'EP1 TX NAK on USB reset')
