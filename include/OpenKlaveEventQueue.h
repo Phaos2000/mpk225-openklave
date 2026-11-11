@@ -15,7 +15,11 @@ struct EventStack {
     uint32_t scratch_3; // write index
     Event Buffer[100];
 };
-static_assert(sizeof(EventStack) <= 0xB00, "MPK249 reserved region at 0x2000b000..0x2000bb00 exceeded");
+// Firmware FIFO starts at 0x2000B000. A stack top of 0x2000C000
+// requires at least 2048 bytes of clear stack space above this object.
+// This is a minimum layout guard, not a worst-case ISR stack proof.
+static_assert(sizeof(EventStack) <= 0x800,
+              "Event FIFO would leave less than 2KiB for the ARM stack");
 
 inline void GlobalEventStackOverflow() {
     // Not a recovery strategy: prevents overwriting RAM. Must be replaced
