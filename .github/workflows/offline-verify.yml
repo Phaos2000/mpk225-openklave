@@ -57,6 +57,14 @@ jobs:
             exit 1
           fi
           sha256sum /tmp/led-{passthrough,chord-on-boot}-not-installable.elf
+          make -B -C /tmp/openklave-candidate/src led.elf CHORD_ON_BOOT=1 FACTORY_SCAN=1
+          cp /tmp/openklave-candidate/src/led.elf /tmp/led-mpk225-model1-not-installable.elf
+          if cmp -s /tmp/led-chord-on-boot-not-installable.elf /tmp/led-mpk225-model1-not-installable.elf; then
+            echo "ERROR: MPK225 factory-derived scan option did not alter linked ELF"
+            exit 1
+          fi
+          arm-none-eabi-size /tmp/led-mpk225-model1-not-installable.elf
+          sha256sum /tmp/led-mpk225-model1-not-installable.elf
       - name: Verify firmware release actions remain disabled
         run: |
           ! grep -q 'python ../util/wipe_os.py' /tmp/openklave-candidate/src/Makefile
