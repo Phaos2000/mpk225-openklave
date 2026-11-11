@@ -1,0 +1,33 @@
+# First real-keyboard audition — NO firmware installation
+
+**What it proves:** Actual MPK225 key MIDI messages can drive the same 49-chord C++ engine that we intend to embed in firmware, with overlapping-note ownership and note-off cleanup. The keyboard continues running its untouched factory firmware v1.02. This does **not** validate OpenKlave's keybed decoder, USB firmware or bootloader.
+
+## Obtain the program
+
+Use the **MPK225 offline build and tests** workflow on the development branch's [GitHub Actions page](https://github.com/Phaos2000/mpk225-openklave/actions/workflows/offline-verify.yml). Download its `MPK225-Live-Chords-Win64-NOT-FIRMWARE` artifact from a successful run; extract `MPK225-Live-Chords.exe`. There is no updater, firmware `.syx`, driver replacement or installer.
+
+The executable uses Windows' built-in **WinMM MIDI API**; no Python needed. It does not transmit SysEx and **refuses to open an output port whose name includes MPK225**.
+
+## Connect MIDI safely
+
+1. Connect your stock MPK225 to Windows by USB, normal mode. Do **not** press update-mode buttons.
+2. Create a virtual MIDI port called `MPK225_Chords` using a utility such as [loopMIDI](https://www.tobias-erichsen.de/software/loopmidi.html), unless you already have a software synthesizer's MIDI output destination available.
+3. Open a Command Prompt in the folder containing the extracted executable.
+4. Run `MPK225-Live-Chords.exe --list`. Note the number for **MPK225 under MIDI inputs** and **MPK225_Chords under MIDI outputs**. Input and output numbering are independent.
+5. Run, substituting your actual device indices:
+   ```bat
+   MPK225-Live-Chords.exe --input 0 --output 1 --chord maj7 --channel 1
+   ```
+6. In your DAW/instrument (e.g. Renoise), enable the `MPK225_Chords` MIDI input port as the note source. **Disable direct MPK225 note input** there while testing, or you'll hear doubled notes.
+7. Play notes and listen; the physical key C produces C major seventh, for example. Ctrl+C stops the program and transmits releases for all active generated notes.
+
+The program chords all note events on the selected input MIDI channel (default 1). If your pads transmit on the same channel as the keyboard, pads will also trigger chords. Set pads to a separate channel in the Akai factory preset or leave them unused for this test. Other channel-voice MIDI (pitch wheel, CC, notes on other channels) passes through unchanged.
+
+## Limitations / acceptance checklist
+
+- Source: `tools/mpk225_live_chords_win.cpp`; same `ChordEngine.h` as embedded prototype, but Windows handles MIDI transport.
+- Chord type is selected at launch (`--chord maj7`, `--chord m9`, `--chord 7#9`, etc.). `--chord invalid` lists available names. This is a **simple one-finger test**, not the final smart recommendation/control UI.
+- The executable's no-device `--selftest` runs in CI. Actual MPK225/DAW latency, MIDI routing, pads, Note Off and Ctrl+C shutdown must be confirmed by the owner.
+- The tool will send **only channel-voice short MIDI messages** to the explicitly chosen output, never firmware commands.
+- If a DAW has opened the keyboard's WinMM input exclusively, close that input before starting the bridge.
+- Once the test succeeds, the next firmware-specific question is mapping real MPK225 keybed events onto those same chord operations. **Do not flash current OpenKlave-derived ELF.**
