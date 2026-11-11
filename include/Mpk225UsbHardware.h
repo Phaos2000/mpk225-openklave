@@ -8,16 +8,10 @@
 #include "Mpk225UsbDeviceState.h"
 #include "Mpk225UsbDescriptors.h"
 #include "Mpk225UsbMidiCables.h"
+#include "Mpk225HostMidiQueue.h"
 #include <stdint.h>
 
 namespace mpk225 {
-
-struct UsbMidiOutEvent {
-    uint8_t data[4]{};
-    uint8_t cable() const { return usbMidiCable(data[0]); }
-    uint8_t cin() const { return usbMidiCin(data[0]); }
-    bool knownCable() const { return usbMidiKnownCable(data[0]); }
-};
 
 class Mpk225UsbHardware {
 public:
@@ -61,24 +55,19 @@ public:
         return configured() && ((ep(2)&0x80B0u)==0x0020u);
     }
     uint32_t errorCount() const { return errors_; }
-    unsigned queuedHostMidi() const { return hostCount_; }
+    unsigned queuedHostMidi() const { return hostMidi_.size(); }
     // When EP1 has an already-ACKed USB OUT packet held in PMA, restore
     // RX VALID as soon as that *specific* packet fits. Requiring 16 slots
     // for a short transfer can unnecessarily hold a note-off under NAK.
     static constexpr bool pendingHostMidiFits(unsigned queued,
                                                unsigned packetBytes) {
-        return packetBytes<=64 && (packetBytes&3u)==0 &&
-               queued<=64 && 64u-queued>=packetBytes/4u;
+        return Mpk225HostMidiQueue::fits(queued,packetBytes);
     }
     // Incoming from host, four USB-MIDI bytes incl cable/CIN nibble.
     bool popHostMidi(UsbMidiOutEvent& out) {
-        if(!hostCount_) return false;
-        out=hostPackets_[hostHead_];
-        hostHead_=(hostHead_+1u)%kHostQueueCount;
-        --hostCount_;
-        // When the endpoint was NAK due to queue pressure, process PMA
-        // only once room for all 16 event packets is available.
-        if(ep1Pending_ && pendingHostMidiFits(hostCount_,bt(1,3)&0x3FFu))
+        if(!hostMidi_.pop(out)) return false;
+        // The caller must mask the USB IRQ before touching this FIFO.
+        if(ep1Pending_ && pendingHostMidiFits(hostMidi_.size(),bt(1,3)&0x3FFu))
             serviceRxPending();
         return true;
     }
@@ -108,7 +97,7 @@ public:
     void reset() {
         control_.busReset();
         errors_=0;
-        hostHead_=hostTail_=hostCount_=0;
+        hostMidi_.clear();
         ep1Pending_=false;
         endpointsEnabled_=false;
         reg(0x44)=static_cast<uint16_t>(~0x0400u); // acknowledge RESET
@@ -167,7 +156,6 @@ public:
     }
 
 private:
-    static constexpr unsigned kHostQueueCount=64;
     static volatile uint16_t& reg(unsigned offset){
         return *reinterpret_cast<volatile uint16_t*>(0x40005C00u+offset);
     }
@@ -261,7 +249,7 @@ private:
         if(control_.configurationEpoch()!=wasEpoch) {
             // SET_CONFIGURATION (including a repeated value) resets all
             // non-control endpoint traffic, not just their readiness.
-            hostHead_=hostTail_=hostCount_=0;
+            hostMidi_.clear();
             ep1Pending_=false;
             // The host restarts bulk/interrupt DATA0 after SET_CONFIGURATION.
             // A STAT-only transition would retain stale DTOG and CTR bits,
@@ -284,7 +272,7 @@ private:
             return;
         }
         // Do not overwrite PMA if the host temporarily outruns our FIFO.
-        if(!pendingHostMidiFits(hostCount_,length)){
+        if(!pendingHostMidiFits(hostMidi_.size(),length)){
             ep1Pending_=true;
             setEndpoint(1,2,0); // NAK until there is room
             return;
@@ -295,7 +283,7 @@ private:
     void serviceRxPending() {
         if(!ep1Pending_) return;
         const unsigned length=bt(1,3)&0x3FFu;
-        if(pendingHostMidiFits(hostCount_,length))
+        if(pendingHostMidiFits(hostMidi_.size(),length))
             copyHostMidiFromPma(length);
         else ++errors_;
         ep1Pending_=false;
@@ -304,20 +292,13 @@ private:
     void copyHostMidiFromPma(unsigned length) {
         uint8_t bytes[64]{};
         pmaRead(kPmaEp1Rx,bytes,length);
-        for(unsigned p=0;p<length;p+=4) {
-            // The factory configuration declares only cables 0..3.
-            // Preserve all legitimate CIN values, including system/SysEx.
-            if(!usbMidiKnownCable(bytes[p])) { ++errors_; continue; }
-            UsbMidiOutEvent& item=hostPackets_[hostTail_];
-            for(unsigned i=0;i<4;++i) item.data[i]=bytes[p+i];
-            hostTail_=(hostTail_+1u)%kHostQueueCount;
-            ++hostCount_;
-        }
+        unsigned invalid=0;
+        if(!hostMidi_.appendFrame(bytes,length,invalid)) ++errors_;
+        errors_+=invalid;
     }
     UsbDeviceState control_{};
     bool endpointsEnabled_=false,ep1Pending_=false;
-    UsbMidiOutEvent hostPackets_[kHostQueueCount]{};
-    unsigned hostHead_=0,hostTail_=0,hostCount_=0;
+    Mpk225HostMidiQueue hostMidi_{};
     uint32_t errors_=0;
 };
 } // namespace mpk225

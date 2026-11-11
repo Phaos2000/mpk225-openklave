@@ -405,7 +405,7 @@ def main() -> int:
                  'EmbeddedSmartChordController.h', 'Stm32UsbTxGate.h',
                  'SmartChordDisplay.h', 'Mpk225UsbDescriptors.h',
                  'Mpk225HidKeyboard.h', 'Mpk225UsbControl.h',
-                 'Mpk225UsbDeviceState.h', 'Mpk225UsbHardware.h'):
+                 'Mpk225UsbDeviceState.h', 'Mpk225HostMidiQueue.h', 'Mpk225UsbHardware.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK225 timing/velocity curve and USB IRQ still need hardware validation; recovery NOT verified.')
