@@ -1,6 +1,8 @@
 // Stock-MPK225 host-side MIDI proof, not firmware. No SysEx/update/USB writes.
 // Windows uses built-in WinMM. This program NEVER opens an MPK225 MIDI output.
 #include "ChordEngine.h"
+#include "SmartHarmony.h"
+#include "VoicingPlanner.h"
 #include <algorithm>
 #include <cctype>
 #include <cstdint>
@@ -19,6 +21,12 @@
 using mpk225::ChordEngine;
 using mpk225::ChordType;
 using mpk225::MidiBatch;
+using mpk225::SmartHarmony;
+using mpk225::HarmonyContext;
+using mpk225::HarmonySuggestion;
+using mpk225::VoicedChord;
+using mpk225::VoicingPlanner;
+using mpk225::ScaleMode;
 
 static uint32_t pack(uint8_t status, uint8_t key, uint8_t velocity) {
     return static_cast<uint32_t>(status) |
@@ -30,6 +38,60 @@ struct ChordRouter {
     ChordEngine engine;
     uint8_t inputChannel = 0; // 0=channel 1, default factory keybed MIDI ch
     uint32_t emitted = 0;
+    bool smart = false;        // opt-in: keep fixed-chord mode as default
+    HarmonyContext harmony{}; // tonic C, major scale, strict in-key
+    VoicedChord previous{};    // real note-level previous voicing
+    unsigned smartFallbacks = 0;
+    const char* lastChosenName = "";
+
+    // Only quality is suggested: the root is always the actual played key's
+    // pitch class. No allocations, external calls, or background analysis.
+    MidiBatch makeSmartChord(uint8_t key, uint8_t velocity) {
+        const uint8_t pc = static_cast<uint8_t>(key % 12);
+        bool found = false;
+        int bestRank = -32768;
+        HarmonySuggestion best{};
+        for (unsigned q = 0; q < static_cast<unsigned>(ChordType::Count); ++q) {
+            HarmonySuggestion suggestion{};
+            if (!SmartHarmony::evaluate(harmony, pc, static_cast<ChordType>(q), suggestion))
+                continue;
+            // Prefer richer diatonic structures on musical ties. This is a
+            // simple transparent heuristic, NOT functional-harmony prediction.
+            const int rank = static_cast<int>(suggestion.score) +
+                             3 * mpk225::kChords[q].count;
+            if (!found || rank > bestRank) {
+                found = true;
+                bestRank = rank;
+                best = suggestion;
+            }
+        }
+
+        // In strict key filtering an out-of-scale root can have zero matches.
+        // Play the unchanged note instead of silently eating a key press.
+        if (!found) {
+            ++smartFallbacks;
+            lastChosenName = "single note (out-of-scale)";
+            const uint8_t singleton[1] = {key};
+            return engine.noteOnVoicing(key, velocity, singleton, 1);
+        }
+        // Keep voicings near the played key, then minimize movement from the
+        // previous chord. Allows real inversions, without octave wrap errors.
+        const uint8_t low = key > 12 ? static_cast<uint8_t>(key-12) : 0;
+        const uint8_t high = key < 99 ? static_cast<uint8_t>(key+28) : 127;
+        VoicedChord chosen{};
+        if (!VoicingPlanner::plan(pc, best.type, previous, low, high, chosen)) {
+            ++smartFallbacks;
+            lastChosenName = "single note (voicing unavailable)";
+            const uint8_t singleton[1] = {key};
+            return engine.noteOnVoicing(key, velocity, singleton, 1);
+        }
+        previous = chosen;
+        harmony.hasPrevious = true;
+        harmony.previousRoot = pc;
+        harmony.previousType = best.type;
+        lastChosenName = mpk225::kChords[static_cast<unsigned>(best.type)].name;
+        return engine.noteOnVoicing(key, velocity, chosen.notes, chosen.count);
+    }
 
     template <typename Send>
     void consume(uint32_t raw, Send send) {
@@ -40,16 +102,23 @@ struct ChordRouter {
         const uint8_t channel = static_cast<uint8_t>(status & 0x0F);
         if (status < 0x80 || status >= 0xF0) return; // never forward SysEx/system data
         if (channel == inputChannel && (family == 0x90 || family == 0x80)) {
-            const MidiBatch batch = (family == 0x90 && velocity != 0)
-                ? engine.noteOn(key, velocity) : engine.noteOff(key);
+            const bool on = family == 0x90 && velocity != 0;
+            const MidiBatch batch = on
+                ? (smart ? makeSmartChord(key, velocity) : engine.noteOn(key, velocity))
+                : engine.noteOff(key);
+            if (smart && on) {
+                std::printf("SMART key=%u root=%u quality=%s voices=%u\n",
+                            static_cast<unsigned>(key),
+                            static_cast<unsigned>(key % 12), lastChosenName,
+                            static_cast<unsigned>(batch.count));
+            }
             for (uint8_t i = 0; i < batch.count; ++i) {
-                // Retain configured MIDI channel rather than channel 1 in the core.
                 send(pack(static_cast<uint8_t>(batch.events[i].status | inputChannel),
                           batch.events[i].note, batch.events[i].velocity));
                 ++emitted;
             }
         } else {
-            send(raw & 0x00FFFFFFu);  // pass through pads on another channel, CC, wheel
+            send(raw & 0x00FFFFFFu); // pass through CC, pitch wheel, other channels
             ++emitted;
         }
     }
