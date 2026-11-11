@@ -33,7 +33,7 @@ def block_replace(text: str, before: str, after: str, new: str, label: str) -> s
     return text[:start] + new + text[end:]
 
 
-BRIDGE = r'''static mpk225::MpkMidiPipeline OpenKlaveMidiBridge{};
+BRIDGE = r'''static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};
 
 // Candidate integration of the legacy MPK249 event scheme. Until the MPK225
 // keybed and USB endpoint have been verified, DO NOT flash this image.
@@ -68,7 +68,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -141,6 +141,13 @@ def patch_makefile(src: str) -> str:
                       'CFLAGS += -DMPK225_FACTORY_KEYBED=$(FACTORY_SCAN)\n'
                       'CFLAGS += -DMPK225_CANDIDATE_CHORD_ON_BOOT=$(CHORD_ON_BOOT)',
                       'select test-only startup chord mode')
+    # Smart harmony and MIDI-note inversion are dormant by default.
+    # A distinct lab-only ELF may enable this via SMART_ON_BOOT=1.
+    src = one_replace(src, 'FACTORY_SCAN ?= 0\n',
+                      'FACTORY_SCAN ?= 0\n'
+                      'SMART_ON_BOOT ?= 0\n'
+                      'CFLAGS += -DMPK225_CANDIDATE_SMART_ON_BOOT=$(SMART_ON_BOOT)\n',
+                      'select smart harmony firmware build')
     # Use the freestanding Cortex-M3 ABI without libstdc++: the candidate
     # makes no exception, RTTI, thread-safe-static, or C++ library calls.
     # Explicit C runtime link avoids multi-gigabyte target C++ package.
@@ -189,7 +196,8 @@ def main() -> int:
         (out / name).write_text(contents)
     for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h',
                  'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h',
-                 'Mpk225FactoryKeybedDecoder.h', 'KeybedContactVelocity.h'):
+                 'Mpk225FactoryKeybedDecoder.h', 'KeybedContactVelocity.h',
+                 'EmbeddedSmartChordController.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK225 timing/velocity curve and USB IRQ still need hardware validation; recovery NOT verified.')
