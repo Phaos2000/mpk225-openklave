@@ -39,10 +39,8 @@ BRIDGE = r'''static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};
 // The reset interrupt calls this while foreground MIDI servicing is paused.
 void ResetMidiForUsbBus(){
   OpenKlaveMidiBridge.resetForUsbBus();
-  if (GlobalEventStack->capacity == 100) {
-    GlobalEventStack->scratch_2 = 0;
-    GlobalEventStack->scratch_3 = 0;
-  }
+  resetEventQueue(GlobalEventStack); // includes pending count, not only indices
+  gEventQueueNeedsPanic = 0; // the old connection can no longer sound notes
 }
 
 // Main-loop-owned MIDI transmission. The USB interrupt handler acknowledges
@@ -52,6 +50,12 @@ void ResetMidiForUsbBus(){
 void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
   const uint32_t queueMask = __get_PRIMASK();
   __disable_irq();
+  if (takeEventQueuePanic()) {
+    resetEventQueue(GlobalEventStack);
+    // Clear stale MIDI ownership and enqueue CC120/CC123 before accepting
+    // more events. The transport will send these when the host resumes.
+    OpenKlaveMidiBridge.panicForEventLoss();
+  }
   for (int i = 0; i < 8 && !IsEventStackEmpty(GlobalEventStack); ++i) {
     Event e = PeekTopEvent(GlobalEventStack, Event{0,0,0,0});
     if (!OpenKlaveMidiBridge.consume(mpk225::LegacyEvent{e.A,e.B,e.C,e.D}))
