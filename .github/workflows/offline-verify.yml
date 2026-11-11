@@ -71,6 +71,7 @@ jobs:
         run: |
           git clone --quiet https://github.com/sillsm/openklave.git /tmp/openklave
           git -C /tmp/openklave checkout --quiet 44a10eae127e5f77b73967d43e1d4d73c5fbf6f4
+          grep -Fq 'RCC->CFGR = 0x51440a;' /tmp/openklave/src/config/system_stm32f10x.c
           python3 integration/patch_openklave.py --upstream /tmp/openklave --output /tmp/openklave-candidate
       - name: Attempt full ELF build of guarded candidate (NO flashing)
         run: |

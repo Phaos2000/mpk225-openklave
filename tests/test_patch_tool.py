@@ -104,6 +104,7 @@ burn:
     assert (out/'src/Mpk225DinMidiTx.h').is_file()
     assert (out/'src/Mpk225DinMidiRx.h').is_file()
     assert 'Mpk225NativeDin.pollRx(dinByte)' in k
+    assert '#error DIN lab requires MPK225_FACTORY_KEYBED=1' in k
     assert 'Mpk225NativeDinRx.takeBulkFrame()' in k
     assert 'Mpk225NativeDin.init(MPK225_DIN_TX_LAB != 0, MPK225_DIN_RX_LAB != 0);' in k
     assert 'Mpk225NativeDin.enqueue(pending,MPK225_DIN_USB_CABLE)' in k

@@ -30,3 +30,9 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Iinclude tests/test_harmony_to_midi.cp
 See `docs/MPK225_MODEL_IDENTIFICATION_V102.md` (MPK225 variant in Akai shared image), `docs/BOOTLOADER_RECOVERY_PREFLIGHT.md` (recovery prerequisites), and `docs/MPK225_USB_V102_OBSERVATIONS.md`.
 
 Never execute OpenKlave's upstream `make burn` on the owner's keyboard. The repo is an independent research project, not affiliated with Akai Professional.
+
+## Bounded path to completion (November 11, 2026)
+
+The offline musical engine, USB device model, and guarded ARM application are implemented; a **laboratory-only, opt-in** USART1 MIDI IN/OUT adapter derives its pins from the MPK225 service schematic. The inherited OpenKlave startup's actual 48 MHz PLL, not its nominal 72 MHz comment, determines the MIDI serial divider. MIDI receive-only lab builds preserve the PA9 output pin. The generated firmware cannot produce a flash image through its release targets.
+
+The remaining gates are *hardware acceptance*, not more theoretical tests: verify stock-firmware MIDI USB cable routing with the passive `monitor-all` tool; verify genuine MPK225 GPIO/keybed/panel/LCD behavior; obtain a nondestructive device-specific backup and prove recovery on a nonessential target; then measure real USB enumeration and MIDI performance. Details and states are tracked in [COMPLETION_CHECKLIST.md](docs/COMPLETION_CHECKLIST.md). No one should install the lab ELF before those gates pass.
