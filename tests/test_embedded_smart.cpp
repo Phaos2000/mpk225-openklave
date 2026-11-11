@@ -3,7 +3,7 @@
 #include <cstdio>
 using namespace mpk225;
 
-static void checkFrame(EmbeddedSmartChordController& dev,
+[[maybe_unused]] static void checkFrame(EmbeddedSmartChordController& dev,
                        unsigned& ons, unsigned& offs, uint16_t allowedMask) {
     while (dev.queuedMessages() > 0) {
         const UsbFrame f = dev.takeUsbFrame();
