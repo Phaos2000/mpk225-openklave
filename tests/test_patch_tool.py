@@ -58,6 +58,8 @@ burn:
     assert '#if MPK225_FACTORY_KEYBED' in k
     assert 'decodeMpk225FactoryScan(event)' in k
     assert (out/'src/KeybedContactVelocity.h').is_file()
+    assert (out/'src/EmbeddedSmartChordController.h').is_file()
+    assert 'static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};' in k
     assert 'mpk225::contactVelocityFromWord(event)' in k
     assert '#if MPK225_FACTORY_KEYBED' in k
     assert 'Event e = {0xFF,velocity,val,0};' in k
@@ -75,6 +77,8 @@ burn:
         assert 'static constexpr PMAAllocation ' + n in k
     assert 'CHORD_ON_BOOT ?= 0' in mk
     assert 'FACTORY_SCAN ?= 0' in mk
+    assert 'SMART_ON_BOOT ?= 0' in mk
+    assert '-DMPK225_CANDIDATE_SMART_ON_BOOT=$(SMART_ON_BOOT)' in mk
     assert '-DMPK225_FACTORY_KEYBED=$(FACTORY_SCAN)' in mk
     assert '-DMPK225_CANDIDATE_CHORD_ON_BOOT=$(CHORD_ON_BOOT)' in mk
     assert '-nostartfiles -nodefaultlibs' in mk
