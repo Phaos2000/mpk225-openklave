@@ -63,7 +63,7 @@ struct ChordRouter {
     }
 };
 
-static ChordType parseChord(const char* name) {
+[[maybe_unused]] static ChordType parseChord(const char* name) {
     const std::string wanted(name);
     for (unsigned n = 0; n < static_cast<unsigned>(ChordType::Count); ++n)
         if (wanted == mpk225::kChords[n].name) return static_cast<ChordType>(n);
