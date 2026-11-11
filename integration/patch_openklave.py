@@ -35,40 +35,49 @@ def block_replace(text: str, before: str, after: str, new: str, label: str) -> s
 
 BRIDGE = r'''static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};
 
-// Candidate integration of the legacy MPK249 event scheme. Until the MPK225
-// keybed and USB endpoint have been verified, DO NOT flash this image.
-// The event-to-MIDI conversion and 8-byte packetization are host-tested;
-// endpoint handling, DMA synchronization and MCU timing are NOT.
+// Main-loop-owned MIDI transmission. The USB interrupt handler acknowledges
+// successful EP1 transfers ONLY; it never consumes MIDI or writes PMA.
+// Queue producer(s) run in IRQ context, so the ring is read/changed with
+// interrupts masked. Full USB/ISR behavior remains UNVERIFIED on MPK225.
 void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
-  // FIFO queue preserves order; if pipeline cannot accept an event, leave
-  // the legacy event pending (do not mutate chord state or drop a note-off).
+  const uint32_t queueMask = __get_PRIMASK();
+  __disable_irq();
   for (int i = 0; i < 8 && !IsEventStackEmpty(GlobalEventStack); ++i) {
     Event e = PeekTopEvent(GlobalEventStack, Event{0,0,0,0});
     if (!OpenKlaveMidiBridge.consume(mpk225::LegacyEvent{e.A,e.B,e.C,e.D}))
-        break;
+        break; // FIFO full: keep this exact event pending for retry
     PopEvent(GlobalEventStack);
   }
+  __set_PRIMASK(queueMask);
 
-  uint32_t * USB_EP1R = (uint32_t *)0x40005c04;
-  // The STM32 changes STAT_TX from VALID to NAK only after host ACK.
-  // Never dequeue a MIDI frame or overwrite PMA while EP1 IN is busy.
-  // This is a necessary gate, not yet complete CTR_TX/USB IRQ validation.
-  if (!mpk225::usbTxBufferReusable(*USB_EP1R)) {
-    USB->ISTR = 0; // retained from OpenKlave; full IRQ behavior unverified
+  if (OpenKlaveMidiBridge.queuedMessages() == 0) return;
+
+  // Protect EP1 status, packet buffer and arming from a concurrent USB reset
+  // or transfer-complete interrupt. This critical section is short (<=8 B).
+  const uint32_t usbMask = __get_PRIMASK();
+  __disable_irq();
+  volatile uint32_t * const ep1 = (volatile uint32_t *)0x40005c04;
+  if (!mpk225::usbShouldSubmitFrame(*ep1,
+        static_cast<unsigned>(OpenKlaveMidiBridge.queuedMessages()))) {
+    __set_PRIMASK(usbMask);
     return;
   }
   const mpk225::UsbFrame frame = OpenKlaveMidiBridge.takeUsbFrame();
-  USBEndpointState state = USBEndpointState{*USB_EP1R,0,0,0,NAK,VALID,INTERRUPT,1};
-  uint32_t * PMAWrite = (uint32_t *)0x40006060;
-  // STM32F103 PMA: each 16-bit word occupies one 32-bit mapped address.
-  for (uint32_t i=0; i<frame.length / 2; ++i) {
-    PMAWrite[i] = static_cast<uint32_t>(frame.bytes[2*i]) |
-                    (static_cast<uint32_t>(frame.bytes[2*i+1]) << 8);
+  if (frame.length == 0) {
+    __set_PRIMASK(usbMask);
+    return;
   }
-  btable * b = (btable *)0x40006010;
+
+  volatile uint32_t * const pma = (volatile uint32_t *)0x40006060;
+  for (uint32_t i = 0; i < frame.length / 2; ++i) {
+    pma[i] = static_cast<uint32_t>(frame.bytes[2*i]) |
+             (static_cast<uint32_t>(frame.bytes[2*i+1]) << 8);
+  }
+  volatile btable * const b = (volatile btable *)0x40006010;
   b->count_tx = frame.length;
-  USB->ISTR = 0;
-  SetRegister(USB_EP1R, setEndpointState(state));
+  USBEndpointState state = USBEndpointState{*ep1,0,0,0,NAK,VALID,INTERRUPT,1};
+  *ep1 = setEndpointState(state);
+  __set_PRIMASK(usbMask);
 }
 
 '''
@@ -80,6 +89,32 @@ def patch_kernel(src: str) -> str:
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
         '\nvoid usb(){', BRIDGE, 'MIDI->USB bridge')
+    # EP1 CTR completions must be acknowledged before subsequent PMA rearm.
+    # The original handler called the MIDI service only from a USB IRQ;
+    # following idle/NAK, newly pressed notes could never kick off IN traffic.
+    src = block_replace(src, '  if ((USB->ISTR &0b1111) == 1 ){',
+                        '\n  // Check if I need to reset',
+                        '''  if ((USB->ISTR & 0x800Fu) == 0x8001u) {
+    volatile uint32_t * const ep1 = (volatile uint32_t *)0x40005c04;
+    const uint32_t old = *ep1;
+    if (old & (mpk225::kUsbCtrTx | mpk225::kUsbCtrRx))
+        *ep1 = mpk225::usbEpCtrAcknowledgeWrite(old);
+    // Main loop will queue and arm pending notes, not this USB ISR.
+    return;
+  }
+''',
+                        'ack EP1 transfer, no MIDI consumption inside USB ISR')
+    # USB reset must leave the MIDI IN endpoint idle/NAK with no phantom
+    # four-byte packet. Main loop arms it only when a real MIDI frame exists.
+    a = src.index('void usbReset(void){')
+    b = src.index('\nvoid writeNumberToScreen(', a)
+    reset = src[a:b]
+    reset = one_replace(reset, 'NAK, VALID, INTERRUPT, 1',
+                        'NAK, NAK, INTERRUPT, 1',
+                        'EP1 TX NAK on USB reset')
+    reset = one_replace(reset, 'b->count_tx= 4;', 'b->count_tx= 0;',
+                        'EP1 TX empty on USB reset')
+    src = src[:a] + reset + src[b:]
     # Do NOT reuse OpenKlave's unchecked raw scan lookup. Preserve only its
     # published MPK249 mapping, explicitly rejecting unmapped codes and unknown
     # event types; this is NOT MPK225 keybed validation.
@@ -128,6 +163,23 @@ def patch_kernel(src: str) -> str:
         'FIFO head/tail init')
     # Conservative firmware default: raw keyboard passthrough.
     # No unverified MPK225 button is assigned to enable Chord Mode.
+    return src
+
+
+
+def patch_main(src: str) -> str:
+    # A key arriving after EP1 becomes NAK cannot cause a new USB interrupt.
+    # Polling in the already-empty foreground loop allows the first note
+    # to initiate an IN packet without waiting for a previous transfer.
+    src = one_replace(src, '#include "kernel.h"',
+                      '#include "kernel.h"\n'
+                      'void ConsumeNoteEventStackAndTransmitNotesOverUSB();',
+                      'foreground USB MIDI service declaration')
+    src = one_replace(src, '  while(1){\n\n  }',
+                      '  while(1){\n'
+                      '    ConsumeNoteEventStackAndTransmitNotesOverUSB();\n'
+                      '  }',
+                      'start first USB IN transfer from main loop')
     return src
 
 
@@ -185,7 +237,7 @@ def main() -> int:
     args = ap.parse_args()
     base = args.upstream.resolve()
     out = args.output.resolve()
-    if not (base / 'src/kernel.c').is_file() or not (base / 'src/Makefile').is_file():
+    if not all((base / 'src' / x).is_file() for x in ('kernel.c', 'main.c', 'Makefile')):
         ap.error('expected OpenKlave checkout with src/kernel.c and src/Makefile')
     if out.exists() or out == base or base in out.parents or out in base.parents:
         ap.error('output must be a NEW, separate directory, not inside upstream')
@@ -195,6 +247,7 @@ def main() -> int:
     # Prepare every change in memory before writing anything.
     files = {
         'src/kernel.c': patch_kernel((base / 'src/kernel.c').read_text()),
+        'src/main.c': patch_main((base / 'src/main.c').read_text()),
         'src/stm32_flash.ld': patch_linker((base / 'src/stm32_flash.ld').read_text()),
         'src/Makefile': patch_makefile((base / 'src/Makefile').read_text()),
     }
