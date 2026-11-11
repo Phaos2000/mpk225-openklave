@@ -63,6 +63,7 @@ public:
         errors_=0;
         hostHead_=hostTail_=hostCount_=0;
         ep1Pending_=false;
+        endpointsEnabled_=false;
         reg(0x44)=static_cast<uint16_t>(~0x0400u); // acknowledge RESET
         reg(0x50)=0; // BTABLE starts at 0x40006000
         reg(0x4C)=0x0080; // EF, address zero
@@ -107,7 +108,7 @@ public:
                 else if(number==1) hostMidiReceived();
                 else ++errors_;
             }
-            if(flags&0x0080u) {
+            if((flags&0x0080u) && !((flags&0x8000u) && (flags&0x0800u) && number==0)) {
                 ackEndpoint(number,false,true);
                 if(number==0) controlTxCompleted();
                 // EP2/EP3 are now NAK; foreground may schedule next message.
