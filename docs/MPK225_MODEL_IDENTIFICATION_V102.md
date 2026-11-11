@@ -41,6 +41,17 @@ Each is **38,650 bytes / 37.74 KiB**; both together are 77,300 bytes / 75.49 KiB
 
 A routine at `0x0800D88C` returns key-range offsets of 48 (variant 1), 36 (variants 2/4), or 24 (variant 3). Various other routines branch on the same model codes to vary controller-layout limits.
 
+
+## RAM and storage implications for an MPK225-only replacement
+
+The same shared application's startup table initializes `0x20000000–0x20004FDF` (20,448 bytes), and startup code loads MSP `0x20004FE0`. That is a **configured memory bound**, not a peak heap/stack measurement or proof that the owner's MPK225 runs identical bytes. If its MCU is the reported STM32F103VCT6 (48 KiB SRAM), the stock configuration appears to leave about **28 KiB** of physical SRAM outside that initialized range.
+
+Omitting the other-model factory bank would reclaim **application code/data flash** for new code or tables. It would **not automatically expand the 48 KiB writable preset/settings partition**: enlarging song storage requires an explicitly redesigned flash map, page-aligned writes, and tested bootloader/recovery behavior.
+
+## Reproduction
+
+Run `python tools/mpk2_model_audit.py "<path to MPK249_&_MPK261_PC_1.02_Update.zip>"` against a local legally obtained official archive. The verifier validates SHA-256, all Intel HEX record checksums, function opcode signatures, USB string descriptors and both 25-entry bank pointer tables. It reads the archive offline and never accesses a MIDI/USB device. The firmware image itself is not stored in this repository.
+
 ## What the finding does and does not establish
 
 **Established:** The distributed v1.02 firmware executable has model-specific behavior for the MPK225 and recognizes its 25-key hardware, USB identity and dedicated factory preset bank.
