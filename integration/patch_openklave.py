@@ -49,8 +49,15 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
     PopEvent(GlobalEventStack);
   }
 
-  const mpk225::UsbFrame frame = OpenKlaveMidiBridge.takeUsbFrame();
   uint32_t * USB_EP1R = (uint32_t *)0x40005c04;
+  // The STM32 changes STAT_TX from VALID to NAK only after host ACK.
+  // Never dequeue a MIDI frame or overwrite PMA while EP1 IN is busy.
+  // This is a necessary gate, not yet complete CTR_TX/USB IRQ validation.
+  if (!mpk225::usbTxBufferReusable(*USB_EP1R)) {
+    USB->ISTR = 0; // retained from OpenKlave; full IRQ behavior unverified
+    return;
+  }
+  const mpk225::UsbFrame frame = OpenKlaveMidiBridge.takeUsbFrame();
   USBEndpointState state = USBEndpointState{*USB_EP1R,0,0,0,NAK,VALID,INTERRUPT,1};
   uint32_t * PMAWrite = (uint32_t *)0x40006060;
   // STM32F103 PMA: each 16-bit word occupies one 32-bit mapped address.
@@ -68,7 +75,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -197,7 +204,7 @@ def main() -> int:
     for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h',
                  'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h',
                  'Mpk225FactoryKeybedDecoder.h', 'KeybedContactVelocity.h',
-                 'EmbeddedSmartChordController.h'):
+                 'EmbeddedSmartChordController.h', 'Stm32UsbTxGate.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK225 timing/velocity curve and USB IRQ still need hardware validation; recovery NOT verified.')
