@@ -70,6 +70,18 @@ public:
     static constexpr size_t kQueueSize = 96;
     size_t queuedMessages() const { return fifo_.size(); }
     size_t freeMessages() const { return fifo_.freeSlots(); }
+    // Called for USB bus reset/disconnect: discard any MIDI packets tied
+    // to the obsolete USB address and forget held voice ownership. Retain
+    // the user's chord mode and quality, but don't emit on an unconfigured
+    // endpoint. The physical keyboard is still the source of new notes.
+    void resetForUsbBus() {
+        const ChordType selected = chords_.chordType();
+        chords_ = ChordEngine{};
+        chords_.setChordType(selected);
+        fifo_ = FixedMidiQueue<kQueueSize>{};
+        for (auto& held : passthroughHeld_) held = false;
+    }
+
     bool chordMode() const { return chordMode_; }
     ChordType chordType() const { return chords_.chordType(); }
     void setChordType(ChordType type) { chords_.setChordType(type); }
