@@ -384,6 +384,19 @@ static int monitorOnly(unsigned index) {
 }
 
 int main(int argc, char** argv) {
+    // Explorer double-click: previously exited instantly (missing --input).
+    // Show the available ports and keep the window visible. No MIDI output
+    // port is opened, no SysEx is sent, and the keyboard is untouched.
+    if (argc == 1) {
+        std::puts("MPK225 Live Chords — safe MIDI test (NOT firmware)");
+        listPorts();
+        std::puts("\nFor a read-only test, launch from Command Prompt:");
+        std::puts("  MPK225-Live-Chords.exe --monitor --input N");
+        std::puts("Use --help for chord modes. No firmware is modified.");
+        std::puts("\nPress Enter to close this window...");
+        (void)std::getchar();
+        return 0;
+    }
     unsigned in=0, out=0, channel=1;
     ChordType chord=ChordType::Major7;
     bool useSmart=false;
