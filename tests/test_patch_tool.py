@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='mpk225_patch_test_') as d:
     base=Path(d)/'upstream';(base/'src').mkdir(parents=True)
     (base/'src/kernel.c').write_text('''#include "kernel.h"
+char boot_secret[] __attribute__((section(".mySection"))) =
+{'A','D','4','A','_','R','i','c','h','a','r','d', 0x1 , 0x0 , 0x2};
 struct Event{\n};\n
 void clearScreen(){\n}\n
 void ConsumeNoteEventStackAndTransmitNotesOverUSB(){\n}
@@ -78,6 +80,8 @@ burn:
     k=(out/'src/kernel.c').read_text()
     mk=(out/'src/Makefile').read_text()
     assert 'OpenKlaveEventQueue.h' in k
+    assert "'A','D','4','A','_','R','i','c','h','a','r','d', 0x0, 0x1, 0x0, 0x2" in k
+    assert "'A','D','4','A','_','R','i','c','h','a','r','d', 0x1 , 0x0 , 0x2" not in k
     assert 'MpkMidiPipeline.h' in k
     assert (out/'src/KeybedReferenceDecoder.h').is_file()
     assert (out/'src/Mpk225FactoryKeybedDecoder.h').is_file()
