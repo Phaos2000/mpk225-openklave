@@ -126,6 +126,21 @@ def patch_kernel(src: str) -> str:
                       '    0x00, 0x24, //MPK249 reference PID (PMA permutation -> 24 00)\n'
                       '#endif',
                       'model-specific USB device PID')
+    # The declaration above uses Akai-era pre-permuted multi-byte fields.
+    # Validate the bytes that actually reach USB EP0 after PMA packing.
+    src = one_replace(src, '// Make a ConfigurationDescriptor into new PMA Allocation.',
+        '''#if MPK225_FACTORY_KEYBED
+static_assert((NewDeviceConfiguration(dev_descriptor).a[5] & 0xFFFFu) == 0x0023u,
+              "MPK225 USB PID must enumerate as 0x0023");
+#else
+static_assert((NewDeviceConfiguration(dev_descriptor).a[5] & 0xFFFFu) == 0x0024u,
+              "MPK249 reference USB PID must enumerate as 0x0024");
+#endif
+static_assert((NewDeviceConfiguration(dev_descriptor).a[4] & 0xFFFFu) == 0x09E8u,
+              "USB vendor ID must enumerate as Akai 0x09E8");
+
+// Make a ConfigurationDescriptor into new PMA Allocation.''',
+        'compiled USB identity after PMA permutation')
     # Do NOT reuse OpenKlave's unchecked raw scan lookup. Preserve only its
     # published MPK249 mapping, explicitly rejecting unmapped codes and unknown
     # event types; this is NOT MPK225 keybed validation.
