@@ -14,7 +14,8 @@ int main() {
     assert(p.queuedMessages() == 1);
     // Model the exact bridge contract: do not take a frame until the USB
     // endpoint has completed the previous IN transfer.
-    for (unsigned status : {0x0u,0x10u,0x30u,0xB0u}) {
+    const unsigned busyStates[] = {0x0u,0x10u,0x30u,0xB0u};
+    for (unsigned status : busyStates) {
         if (usbTxBufferReusable(status)) p.takeUsbFrame();
         assert(p.queuedMessages() == 1);
     }
