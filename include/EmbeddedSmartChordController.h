@@ -11,6 +11,16 @@
 #ifndef MPK225_CANDIDATE_SMART_ON_BOOT
 #define MPK225_CANDIDATE_SMART_ON_BOOT 0
 #endif
+#ifndef MPK225_CANDIDATE_PANEL_BUTTONS
+#define MPK225_CANDIDATE_PANEL_BUTTONS 0
+#endif
+static_assert(MPK225_CANDIDATE_PANEL_BUTTONS == 0 ||
+              MPK225_CANDIDATE_PANEL_BUTTONS == 1,
+              "PANEL_BUTTONS requires 0/1");
+static_assert(!MPK225_CANDIDATE_PANEL_BUTTONS ||
+              MPK225_CANDIDATE_SMART_ON_BOOT,
+              "PANEL_BUTTONS requires smart chord mode");
+
 #ifndef MPK225_CANDIDATE_CHORD_ON_BOOT
 #define MPK225_CANDIDATE_CHORD_ON_BOOT 0
 #endif
@@ -43,6 +53,46 @@ public:
         (void)pipeline_.consume({251, 0, 123, 0}); // CC123 All Notes Off
     }
 
+    // Upstream OpenKlave MPK249 panel event IDs, not yet matched to the
+    // physical MPK225 wiring. Only present in an explicitly requested lab
+    // build (PANEL_BUTTONS=1; SMART_ON_BOOT=1).
+    // SELECT L/R = tonic -/+ ; SELECT U/D = mode next/previous ;
+    // knob push = strict/borrowed/any filter cycle.
+    bool handlePanelButton(LegacyEvent event) {
+#if MPK225_CANDIDATE_PANEL_BUTTONS
+        const unsigned id=event.note;
+        if (event.type!=300 && event.type!=301) return false;
+        if (id!=12 && id!=13 && id!=14 && id!=15 && id!=8)
+            return false;
+        if (event.type==301) return true; // consume release, never change twice
+        switch (id) {
+            case 12: harmony_.tonic=static_cast<uint8_t>((harmony_.tonic+11u)%12u);break;
+            case 13: harmony_.tonic=static_cast<uint8_t>((harmony_.tonic+1u)%12u);break;
+            case 14: harmony_.scale=static_cast<ScaleMode>(
+                (static_cast<unsigned>(harmony_.scale)+1u) %
+                static_cast<unsigned>(ScaleMode::Count));break;
+            case 15: harmony_.scale=static_cast<ScaleMode>(
+                (static_cast<unsigned>(harmony_.scale)+
+                 static_cast<unsigned>(ScaleMode::Count)-1u) %
+                static_cast<unsigned>(ScaleMode::Count));break;
+            case 8: harmony_.filter=static_cast<HarmonyFilter>(
+                (static_cast<unsigned>(harmony_.filter)+1u)%3u);break;
+        }
+        harmony_.hasPrevious=false;
+        previous_=VoicedChord{};
+        panelDirty_=true;
+        return true;
+#else
+        (void)event;
+        return false;
+#endif
+    }
+    uint8_t tonic() const { return harmony_.tonic; }
+    ScaleMode scale() const { return harmony_.scale; }
+    HarmonyFilter filter() const { return harmony_.filter; }
+    bool panelDirty() const { return panelDirty_; }
+    void clearPanelDirty() { panelDirty_=false; }
+
     bool smartEnabled() const { return MPK225_CANDIDATE_SMART_ON_BOOT != 0; }
     bool chordEnabled() const { return pipeline_.chordMode(); }
     unsigned fallbackCount() const { return fallbacks_; }
@@ -53,6 +103,7 @@ public:
     // Input event is *already* decoded to a valid MIDI pitch by the
     // separate, experimental hardware-specific scan decoder.
     bool consume(LegacyEvent e) {
+        if (handlePanelButton(e)) return true;
         if (!smartEnabled() || !pipeline_.chordMode() ||
             e.type != 0xFF || e.value == 0 || e.note > 127)
             return pipeline_.consume(e);
@@ -118,6 +169,7 @@ private:
     HarmonyContext harmony_{}; // experimental default: strict C major
     VoicedChord previous_{};
     unsigned fallbacks_ = 0;
+    bool panelDirty_ = false;
 };
 
 } // namespace mpk225
