@@ -81,7 +81,7 @@ jobs:
         shell: cmd
         run: |
           call "%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cl /nologo /std:c++17 /EHsc /O2 /W4 /Iinclude tools\mpk225_live_chords_win.cpp /link winmm.lib user32.lib /OUT:MPK225-Live-Chords.exe
+          cl /nologo /std:c++17 /EHsc /O2 /W4 /MT /Iinclude tools\mpk225_live_chords_win.cpp /link winmm.lib user32.lib /OUT:MPK225-Live-Chords.exe
           MPK225-Live-Chords.exe --selftest
           MPK225-Live-Chords.exe --suggest G --tonic C --scale major --filter strict
           MPK225-Live-Chords.exe --suggest all --tonic C --scale major --filter strict
