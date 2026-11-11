@@ -318,20 +318,87 @@ static bool numberArg(const char* arg, unsigned& result) {
     result=static_cast<unsigned>(value);
     return true;
 }
+// Read-only keybed/pad/encoder observation with the STOCK MPK225 firmware.
+// This function does not open any MIDI output or transmit a single byte.
+static int monitorOnly(unsigned index) {
+    if (index >= midiInGetNumDevs()) {
+        std::puts("Invalid MIDI input number; use --list."); return 2;
+    }
+    MIDIINCAPSA info{};
+    if (midiInGetDevCapsA(index,&info,sizeof(info)) != MMSYSERR_NOERROR) return 2;
+    HMIDIIN input=nullptr;
+    mainThread=GetCurrentThreadId();
+    MSG msg{};
+    PeekMessage(&msg,nullptr,WM_USER,WM_USER,PM_NOREMOVE);
+    const MMRESULT opened=midiInOpen(&input,index,mainThread,0,CALLBACK_THREAD);
+    if (opened!=MMSYSERR_NOERROR) {
+        std::printf("Cannot open input %u (error=%u)\n",index,opened);
+        return 2;
+    }
+    if (midiInStart(input)!=MMSYSERR_NOERROR) {
+        midiInClose(input); std::puts("Cannot start input monitoring"); return 2;
+    }
+    SetConsoleCtrlHandler(ctrlHandler,TRUE);
+    std::printf("READ-ONLY MONITOR: %s. Press keys/pads/controls; Ctrl+C stops.\n",
+                info.szPname);
+    std::puts("No MIDI output is opened. No SysEx, update commands or firmware changes.");
+    const ULONGLONG began=GetTickCount64();
+    unsigned seen=0,presses=0,releases=0,errors=0;
+    while (GetMessage(&msg,nullptr,0,0)>0) {
+        if (msg.message==MM_MIM_ERROR || msg.message==MM_MIM_LONGERROR) {
+            ++errors;
+            std::puts("MIDI input driver reported malformed data");
+            continue;
+        }
+        if (msg.message!=MM_MIM_DATA) continue;
+        const uint32_t d=static_cast<uint32_t>(msg.lParam);
+        const unsigned st=d&0xFFu;
+        const unsigned a=(d>>8)&0x7Fu;
+        const unsigned b=(d>>16)&0x7Fu;
+        if(st<0x80u || st>=0xF0u) continue; // MIDI channel voice only
+        const unsigned ch=(st&0xFu)+1u;
+        const unsigned type=st&0xF0u;
+        const bool noteOff=(type==0x80u || (type==0x90u && b==0));
+        const char* kind = noteOff ? "NOTE OFF" :
+                           type==0x90u ? "NOTE ON" :
+                           type==0xA0u ? "POLY PRESSURE" :
+                           type==0xB0u ? "CC" :
+                           type==0xC0u ? "PROGRAM" :
+                           type==0xD0u ? "CHANNEL PRESSURE" :
+                           type==0xE0u ? "PITCH BEND" : "OTHER";
+        if (type==0x90u && !noteOff) ++presses;
+        if (noteOff) ++releases;
+        ++seen;
+        std::printf("%7llu ms   ch=%2u   %-16s  data1=%3u data2=%3u\n",
+                    static_cast<unsigned long long>(GetTickCount64()-began),
+                    ch,kind,a,b);
+        std::fflush(stdout);
+    }
+    midiInStop(input);
+    midiInReset(input);
+    midiInClose(input);
+    SetConsoleCtrlHandler(ctrlHandler,FALSE);
+    std::printf("MONITOR STOPPED: messages=%u note-ons=%u note-offs=%u errors=%u\n",
+                seen,presses,releases,errors);
+    return errors ? 1 : 0;
+}
+
 int main(int argc, char** argv) {
     unsigned in=0, out=0, channel=1;
     ChordType chord=ChordType::Major7;
     bool useSmart=false;
     HarmonyContext harmony{};
-    bool inputChosen=false, outputChosen=false, listed=false;
+    bool inputChosen=false, outputChosen=false, listed=false, monitor=false;
     std::string suggestRoot;
     for (int a=1;a<argc;++a) {
         const std::string opt(argv[a]);
         if (opt=="--selftest") return selfTest();
         if (opt=="--list") { listed=true; continue; }
+        if (opt=="--monitor") { monitor=true; continue; }
         if (opt=="--smart") { useSmart=true; continue; }
         if (opt=="--help") {
             std::puts("Usage: MPK225-Live-Chords.exe --list");
+            std::puts("       MPK225-Live-Chords.exe --monitor --input N  (read-only MIDI traffic)");
             std::puts("       MPK225-Live-Chords.exe --input N --output M --chord maj7 [--channel 1]");
             std::puts("       MPK225-Live-Chords.exe --input N --output M --smart --tonic C --scale major [--filter strict]");
             std::puts("       MPK225-Live-Chords.exe --suggest G --tonic C --scale major [--filter strict]");
@@ -361,6 +428,10 @@ int main(int argc, char** argv) {
         return 0;
     }
     if (listed) { listPorts(); return 0; }
+    if (monitor) {
+        if (!inputChosen) { std::puts("Specify --input N; use --list to find MPK225."); return 2; }
+        return monitorOnly(in);
+    }
     if (!inputChosen || !outputChosen) { std::puts("Choose ports with --list and --input N --output M"); return 2; }
     if (in>=midiInGetNumDevs() || out>=midiOutGetNumDevs()) {
         std::puts("Invalid port number. Run --list."); return 2;
