@@ -267,6 +267,12 @@ def patch_makefile(src: str) -> str:
                       'SMART_ON_BOOT ?= 0\n'
                       'CFLAGS += -DMPK225_CANDIDATE_SMART_ON_BOOT=$(SMART_ON_BOOT)\n',
                       'select smart harmony firmware build')
+    # Unverified MPK249 select/knob button identifiers are opt-in lab only.
+    src = one_replace(src, 'SMART_ON_BOOT ?= 0\n',
+                      'SMART_ON_BOOT ?= 0\n'
+                      'PANEL_BUTTONS ?= 0\n'
+                      'CFLAGS += -DMPK225_CANDIDATE_PANEL_BUTTONS=$(PANEL_BUTTONS)\n',
+                      'select experimental physical panel control binding')
     # Use the freestanding Cortex-M3 ABI without libstdc++: the candidate
     # makes no exception, RTTI, thread-safe-static, or C++ library calls.
     # Explicit C runtime link avoids multi-gigabyte target C++ package.
