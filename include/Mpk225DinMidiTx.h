@@ -67,26 +67,39 @@ public:
                   "31.25-kbaud MIDI UART divider");
     bool ready() const { return ready_; }
     uint32_t receiveErrors() const { return receiveErrors_; }
+    // PA9 stays in its original GPIO state in RX-only lab configurations.
+    static constexpr uint32_t gpioAHighConfig(uint32_t original,
+                                               bool enableTx,bool enableRx) {
+        return (original & ~((enableTx?0xF0u:0u) |
+                              (enableRx?0xF00u:0u))) |
+               (enableTx?0xB0u:0u) | (enableRx?0x400u:0u);
+    }
+    static constexpr uint32_t controlBits(bool enableTx,bool enableRx) {
+        return (1u<<13) | (enableTx?(1u<<3):0u) |
+               (enableRx?(1u<<2):0u);
+    }
     unsigned queuedBytes() const { return tx_.size(); }
     bool enqueue(const UsbMidiOutEvent& ev,uint8_t cable) {
-        return ready_ && tx_.accept(ev,cable);
+        return ready_ && transmitting_ && tx_.accept(ev,cable);
     }
-    // Reject unexpected clock or USART1 remapping: do not touch TX pins.
-    bool init(bool enableRx=false) {
+    // Reject unexpected clock/remapping; do not touch PA9 unless TX enabled.
+    // This is experimental and must never be called on the owner's unit
+    // before full factory-image backup and recovery have been established.
+    bool init(bool enableTx,bool enableRx) {
+        if(!enableTx && !enableRx) return false;
         const uint32_t clock=reg(0x40021004u); // RCC_CFGR
         if((clock&0x0000000Cu)!=0x00000008u || // SWS=PLL
            (clock&0x00003800u)!=0) return false; // PPRE2=DIV1
         reg(0x40021018u)|=(1u<<0)|(1u<<2)|(1u<<14); // AFIO GPIOA USART1
         if(reg(0x40010004u)&(1u<<2)) return false; // USART1 remap forbidden
         volatile uint32_t& crh=reg(0x40010804u); // GPIOA CRH
-        crh=(crh&~(0xFFu<<4)) | (0xBu<<4) | (0x4u<<8);
+        crh=gpioAHighConfig(crh,enableTx,enableRx);
         reg(0x4001380Cu)=0; // USART1_CR1 disabled
         reg(0x40013810u)=0; // CR2: 1 stop bit
         reg(0x40013814u)=0; // CR3: no flow control
         reg(0x40013808u)=kBrr;
-        reg(0x4001380Cu)=(1u<<13)|(1u<<3) |
-            (enableRx?(1u<<2):0u); // UE/TE plus opt-in RE
-        receiving_=enableRx;receiveErrors_=0;
+        reg(0x4001380Cu)=controlBits(enableTx,enableRx);
+        transmitting_=enableTx;receiving_=enableRx;receiveErrors_=0;
         tx_.clear();
         ready_=true;
         return true;
@@ -108,7 +121,7 @@ public:
     }
     // Foreground-only, nonblocking. Never lose queued bytes when TXE low.
     void serviceTx() {
-        if(!ready_ || tx_.size()==0) return;
+        if(!ready_ || !transmitting_ || tx_.size()==0) return;
         if(!(reg(0x40013800u)&(1u<<7))) return; // USART1_SR TXE
         uint8_t byte=0;
         if(tx_.pop(byte)) reg(0x40013804u)=byte; // USART1_DR
@@ -119,6 +132,6 @@ private:
     }
     Mpk225DinTxQueue tx_{};
     uint32_t receiveErrors_=0;
-    bool ready_=false,receiving_=false;
+    bool ready_=false,transmitting_=false,receiving_=false;
 };
 } // namespace mpk225

@@ -44,5 +44,16 @@ int main() {
     q.clear();
     assert(!q.pop(byte));
     static_assert(Mpk225DinUart1::kBrr==0x900,"exact 31.25 kbaud");
+    // RX-only must not drive the PA9 MIDI OUT pin or enable USART1 TE.
+    static_assert(Mpk225DinUart1::gpioAHighConfig(0xFFFFFFFFu,false,true)
+                  ==0xFFFFF4FFu,"RX-only preserves PA9 and other GPIO pins");
+    static_assert(Mpk225DinUart1::gpioAHighConfig(0xFFFFFFFFu,true,false)
+                  ==0xFFFFFFBFu,"TX-only preserves PA10");
+    static_assert(Mpk225DinUart1::gpioAHighConfig(0xFFFFFFFFu,true,true)
+                  ==0xFFFFF4BFu,"full UART config alters PA9/PA10 only");
+    static_assert((Mpk225DinUart1::controlBits(false,true)&(1u<<3))==0u,
+                  "RX-only must not enable the transmitter");
+    static_assert((Mpk225DinUart1::controlBits(true,false)&(1u<<2))==0u,
+                  "TX-only must not enable the receiver");
     std::puts("PASS: schematic-backed USART1 TX, USB CIN byte lengths, explicit cable binding, bounded atomic 128-byte FIFO");
 }

@@ -339,7 +339,7 @@ static_assert((NewDeviceConfiguration(dev_descriptor).a[4] & 0xFFFFu) == 0x09E8u
     src = one_replace(src, '    USARTSetup();',
         '    USARTSetup();\n'
         '#if MPK225_FACTORY_KEYBED && (MPK225_DIN_TX_LAB || MPK225_DIN_RX_LAB)\n'
-        '    (void)Mpk225NativeDin.init(MPK225_DIN_RX_LAB != 0);\n'
+        '    (void)Mpk225NativeDin.init(MPK225_DIN_TX_LAB != 0, MPK225_DIN_RX_LAB != 0);\n'
         '#endif',
         'opt-in schematic-backed USART1 DIN TX initialization')
     src = one_replace(src, 'GlobalEventStack->capacity = 100;',
