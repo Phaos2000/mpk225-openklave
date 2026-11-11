@@ -59,6 +59,10 @@ burn:
     assert 'decodeMpk225FactoryScan(event)' in k
     assert (out/'src/KeybedContactVelocity.h').is_file()
     assert (out/'src/EmbeddedSmartChordController.h').is_file()
+    assert (out/'src/Stm32UsbTxGate.h').is_file()
+    # Frame removal must occur only AFTER endpoint readiness is checked.
+    assert 'if (!mpk225::usbTxBufferReusable(*USB_EP1R))' in k
+    assert k.index('if (!mpk225::usbTxBufferReusable(*USB_EP1R))') < k.index('OpenKlaveMidiBridge.takeUsbFrame()')
     assert 'static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};' in k
     assert 'mpk225::contactVelocityFromWord(event)' in k
     assert '#if MPK225_FACTORY_KEYBED' in k
