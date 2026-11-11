@@ -25,7 +25,7 @@ public:
         pendingConfiguration_=0; pendingAction_=0;
         requested_=0; sent_=0; needZlp_=false;
         current_=UsbDescriptorView{};
-        protocol_=1; idle_=0; leds_=0;
+        protocol_=1; idle_=0; leds_=0; pendingLeds_=0;
         ++configurationEpoch_; // all previous transfers belong to old bus
         hid_.clear();
     }
@@ -114,6 +114,11 @@ public:
             current_={scratch_,len}; dataIn(req.wLength);
             return true;
         }
+        if (req.wIndex==2 && req.bmRequestType==0xA1 &&
+            req.bRequest==1 && req.wValue==0x0200 && req.wLength>=1) {
+            scratch_[0]=leds_; current_={scratch_,1};
+            dataIn(req.wLength); return true; // GET_REPORT: LED output
+        }
         if (req.wIndex==2 && req.bmRequestType==0x21 &&
             req.bRequest==9 && req.wValue==0x0200 && req.wLength==1) {
             stage_=ControlStage::DataOut; return true; // LED output
@@ -152,6 +157,7 @@ public:
                     break;
                 case 3: idle_=pendingIdle_; break;
                 case 4: protocol_=pendingProtocol_; break;
+                case 5: leds_=pendingLeds_; break; // SET_REPORT status ACK
             }
             pendingAction_=0;
             stage_=ControlStage::WaitSetup;
@@ -163,7 +169,10 @@ public:
             stage_=ControlStage::WaitSetup; return true;
         }
         if (stage_==ControlStage::DataOut && count==1 && bytes) {
-            leds_=static_cast<uint8_t>(bytes[0]&0x1Fu);
+            // Control OUT data is provisional until the status IN succeeds.
+            // A new SETUP or bus reset must not commit an aborted LED change.
+            pendingLeds_=static_cast<uint8_t>(bytes[0]&0x1Fu);
+            pendingAction_=5;
             stage_=ControlStage::StatusIn; return true;
         }
         stage_=ControlStage::Stall; return false;
@@ -171,7 +180,9 @@ public:
 
 private:
     void dataIn(uint16_t wLength) {
-        stage_=ControlStage::DataIn;
+        // An IN-direction request with wLength==0 has no data stage.
+        // Go straight to its OUT status stage; do not wait for a data IN ACK.
+        stage_=wLength?ControlStage::DataIn:ControlStage::StatusOut;
         sent_=0;
         // Zero-length termination only when actual descriptor shorter than
         // requested and exact multiple of EP0's eight-byte packet.
@@ -187,6 +198,7 @@ private:
     uint8_t pendingAddress_=0, pendingConfiguration_=0;
     uint8_t pendingAction_=0;
     uint8_t idle_=0,protocol_=1,leds_=0,pendingIdle_=0,pendingProtocol_=1;
+    uint8_t pendingLeds_=0;
     HidKeyboardState hid_{};
 };
 

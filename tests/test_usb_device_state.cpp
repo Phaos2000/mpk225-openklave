@@ -44,6 +44,12 @@ int main() {
     assert(getDescriptor(usb,{0x80,6,0x0200,0,169},169)==22);
     assert(getDescriptor(usb,{0x81,6,0x2200,2,63},63)==8);
     assert(getDescriptor(usb,{0x80,6,0x0302,0x0409,14},14)==2);
+    // A legitimate zero-length GET_DESCRIPTOR contains no IN data stage.
+    assert(usb.setup({0x80,6,0x0100,0,0}));
+    assert(usb.stage()==ControlStage::StatusOut);
+    assert(!usb.nextIn().valid);
+    assert(usb.outReceived(nullptr,0));
+    assert(usb.stage()==ControlStage::WaitSetup);
 
     // SET_ADDRESS must update address only AFTER status IN is acknowledged.
     assert(usb.setup({0x00,5,17,0,0}));
@@ -79,8 +85,19 @@ int main() {
     assert(usb.stage()==ControlStage::DataOut);
     const uint8_t led=0xA5;
     assert(usb.outReceived(&led,1));
+    assert(usb.ledOutput()==0); // output is uncommitted until status IN
     statusIn(usb);
     assert(usb.ledOutput()==(led&31));
+    assert(dataByte(usb,{0xA1,1,0x0200,2,1})==(led&31));
+    // Aborting a pending SET_REPORT must preserve the previously stored LEDs.
+    const uint8_t abandonedLed=0x03;
+    assert(usb.setup({0x21,9,0x0200,2,1}));
+    assert(usb.outReceived(&abandonedLed,1));
+    assert(usb.ledOutput()==(led&31));
+    assert(dataByte(usb,{0xA1,1,0x0200,2,1})==(led&31));
+    assert(usb.ledOutput()==(led&31));
+    assert(!usb.setup({0xA1,1,0x0201,2,1})); // unadvertised report ID
+    assert(usb.stage()==ControlStage::Stall);
 
     assert(usb.hidKeys().press(4)); // A key
     assert(usb.setup({0xA1,1,0x0100,2,8}));
