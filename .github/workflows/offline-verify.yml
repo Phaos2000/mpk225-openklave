@@ -43,6 +43,20 @@ jobs:
           set -euo pipefail
           clang++ --target=armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -fno-threadsafe-statics -Iinclude -c tests/arm_usb.cpp -o /tmp/mpk225-composite-arm.o
           file /tmp/mpk225-composite-arm.o
+      - name: Compile full MPK225/OpenKlave integration using runner Clang
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --quiet https://github.com/sillsm/openklave.git /tmp/openklave-clang
+          git -C /tmp/openklave-clang checkout --quiet 44a10eae127e5f77b73967d43e1d4d73c5fbf6f4
+          python3 integration/patch_openklave.py --upstream /tmp/openklave-clang --output /tmp/openklave-clang-candidate
+          mkdir -p /tmp/mpk225-empty-libc-headers
+          printf '#pragma once\n' > /tmp/mpk225-empty-libc-headers/stdio.h
+          printf '#pragma once\n' > /tmp/mpk225-empty-libc-headers/stdlib.h
+          cd /tmp/openklave-clang-candidate/src
+          clang++ --target=armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -fno-threadsafe-statics -DMPK225_FACTORY_KEYBED=1 -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 -DMPK225_CANDIDATE_PANEL_BUTTONS=1 -I. -Ithird_party -I/tmp/mpk225-empty-libc-headers -c kernel.c -o /tmp/mpk225-generated-kernel.o
+          clang++ --target=armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -fno-threadsafe-statics -I. -Ithird_party -I/tmp/mpk225-empty-libc-headers -c main.c -o /tmp/mpk225-generated-main.o
+          file /tmp/mpk225-generated-kernel.o /tmp/mpk225-generated-main.o
       - name: Install Cortex-M3 compiler (no device access)
         run: |
           sudo apt-get update -qq
