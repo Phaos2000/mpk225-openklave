@@ -20,6 +20,7 @@ void usb(){
   // Check if I need to reset
 }
 void usbReset(void){
+    amIInASetAddressTransaction = 0;
   USBEndpointState state = USBEndpointState{*USB_EP1R, 0, 0, 0, NAK, VALID, INTERRUPT, 1 };
   b->count_tx= 4;
 }
