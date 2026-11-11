@@ -166,7 +166,7 @@ static_assert((NewDeviceConfiguration(dev_descriptor).a[4] & 0xFFFFu) == 0x09E8u
     # MPK249 reference mode is intentionally left unchanged.
     src = one_replace(src, '  uint32_t velocity = 100;',
                       '#if MPK225_FACTORY_KEYBED\n'
-                      '  const uint32_t velocity = mpk225::contactVelocityFromWord(event);\n'
+                      '  const uint32_t velocity = mpk225::contactVelocityFromWordForNote(event, static_cast<uint8_t>(val));\n'
                       '#else\n'
                       '  const uint32_t velocity = 100;\n'
                       '#endif',
