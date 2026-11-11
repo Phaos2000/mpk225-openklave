@@ -98,6 +98,11 @@ burn:
     assert 'decodeMpk225FactoryScan(event)' in k
     assert (out/'src/KeybedContactVelocity.h').is_file()
     assert (out/'src/EmbeddedSmartChordController.h').is_file()
+    assert (out/'src/SmartChordDisplay.h').is_file()
+    assert 'void UpdateSmartChordDisplay(){' in k
+    assert 'formatSmartChordStatus(line,' in k
+    assert '#if MPK225_CANDIDATE_PANEL_BUTTONS' in k
+    assert 'UpdateSmartChordDisplay();' in main
     assert (out/'src/Stm32UsbTxGate.h').is_file()
     # A previously idle USB endpoint must be kicked from the main loop,
     # not require a prior USB transfer. The USB interrupt only acknowledges.
