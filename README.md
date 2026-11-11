@@ -2,7 +2,7 @@
 
 **Goal:** a substantially more capable Akai MPK225, beginning with a polyphonic one-finger chord engine, comprehensive harmonic suggestions and real MIDI output. Sequencing and a Windows editor are subsequent goals.
 
-**Safety: host-tested prototype, not installable MPK225 firmware. DO NOT FLASH.** Full MPK225 keybed/USB wiring, bootloader backup and recovery are not yet validated.
+**Safety: offline-built, NOT installable MPK225 firmware. DO NOT FLASH.** The C++ musical engine and guarded OpenKlave-derived Cortex-M3 ELF builds pass CI, but real MPK225 USB/keybed timing, velocity, bootloader backup and recovery remain unverified.
 
 ## Working host-side modules (v0.3 milestone)
 
@@ -23,7 +23,7 @@ g++ -std=c++17 -O2 -Wall -Wextra -Werror -Iinclude tests/test_smart_harmony.cpp 
 g++ -std=c++17 -O2 -Wall -Wextra -Werror -Iinclude tests/test_harmony_to_midi.cpp -o test_harmony_to_midi && ./test_harmony_to_midi
 ```
 
-Cortex-M3 syntax/object compilation was checked with Clang using `-target armv7m-none-eabi -mcpu=cortex-m3 -mthumb -ffreestanding -fno-exceptions -fno-rtti`. Full firmware build and real-device tests **have not** been done.
+**Full ARM Cortex-M3 ELF linking has passed GitHub Actions CI**, including a separate, byte-different model-1 MPK225 mapping + chord-on-boot candidate. The build remains **non-installable and no firmware has been flashed**. Live keyboard tests, USB enumeration and verified recovery are still outstanding. See [MPK225 factory-derived keybed mapping](docs/MPK225_FACTORY_KEYBED.md).
 
 ## Device research
 
