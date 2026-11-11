@@ -4,6 +4,7 @@
 #include "SmartHarmony.h"
 #include "VoicingPlanner.h"
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <cstdio>
@@ -180,6 +181,39 @@ struct ChordRouter {
     std::exit(2);
 }
 
+
+// List every compatible type (all roots or one chosen root). Source of truth
+// is the same no-allocation SmartHarmony evaluation used for live playing.
+[[maybe_unused]] static size_t showSuggestions(const HarmonyContext& context,
+                                                const char* rootArg) {
+    const bool allRoots = std::string(rootArg) == "all";
+    const uint8_t filterRoot = allRoots ? 0 : parseTonic(rootArg);
+    std::array<HarmonySuggestion, SmartHarmony::kPossibilities> found{};
+    size_t n = 0;
+    SmartHarmony::forEach(context, [&](HarmonySuggestion item) {
+        if (allRoots || item.root == filterRoot) found[n++] = item;
+    });
+    // Stable ties retain enumeration order; score is a heuristic.
+    std::stable_sort(found.begin(), found.begin() + n,
+        [](const HarmonySuggestion& a, const HarmonySuggestion& b) {
+            return a.score > b.score;
+        });
+    const char* pitches[] = {"C","C#","D","D#","E","F","F#","G","G#","A","A#","B"};
+    std::printf("%zu compatible voiced chord types; rank is heuristic only:\n", n);
+    for (size_t i=0;i<n;++i) {
+        const auto& choice=found[i];
+        std::printf("%3zu  %-2s %-11s score=%d  non-scale=%u  shared=%u  motion=%u\n",
+                    i+1,pitches[choice.root],
+                    mpk225::kChords[static_cast<unsigned>(choice.type)].name,
+                    static_cast<int>(choice.score),
+                    static_cast<unsigned>(choice.nonScaleTones),
+                    static_cast<unsigned>(choice.sharedTones),
+                    static_cast<unsigned>(choice.motion));
+    }
+    if (n==0) std::puts("No matches. Try --filter borrowed or --filter any.");
+    return n;
+}
+
 static int selfTest() {
     ChordRouter router;
     router.engine.setChordType(ChordType::Major7);
@@ -203,6 +237,12 @@ static int selfTest() {
     if (messages.size()!=21) return 8;   // 4 more on + 4 off
     for (unsigned n=0;n<128;++n)
         if (router.engine.noteReferences(static_cast<uint8_t>(n))) return 9;
+    // Enumeration covers all 49 types at each of 12 roots.
+    HarmonyContext listContext{};
+    if (SmartHarmony::forEach(listContext, [](HarmonySuggestion){}) != 73) return 20;
+    listContext.filter=mpk225::HarmonyFilter::Any;
+    if (SmartHarmony::forEach(listContext, [](HarmonySuggestion){}) !=
+        SmartHarmony::kPossibilities) return 21;
     // Smart mode: C-key generates multiple notes all in C major.
     ChordRouter smart;
     smart.smart=true;
@@ -284,6 +324,7 @@ int main(int argc, char** argv) {
     bool useSmart=false;
     HarmonyContext harmony{};
     bool inputChosen=false, outputChosen=false, listed=false;
+    std::string suggestRoot;
     for (int a=1;a<argc;++a) {
         const std::string opt(argv[a]);
         if (opt=="--selftest") return selfTest();
@@ -293,6 +334,9 @@ int main(int argc, char** argv) {
             std::puts("Usage: MPK225-Live-Chords.exe --list");
             std::puts("       MPK225-Live-Chords.exe --input N --output M --chord maj7 [--channel 1]");
             std::puts("       MPK225-Live-Chords.exe --input N --output M --smart --tonic C --scale major [--filter strict]");
+            std::puts("       MPK225-Live-Chords.exe --suggest G --tonic C --scale major [--filter strict]");
+            std::puts("       MPK225-Live-Chords.exe --suggest all --tonic C --scale major");
+            std::puts("Suggestions are read-only: no MIDI device or output is opened.");
             std::puts("Smart filters: strict / borrowed / any. Modes include minor, dorian, lydian, harmonic-minor.");
             std::puts("Smart chooses a compatible quality per pressed root, then voices it near the key.");
             std::puts("Input = MPK225 MIDI; Output = separate virtual MIDI or synth port (NOT MPK225).");
@@ -309,7 +353,12 @@ int main(int argc, char** argv) {
         else if (opt=="--tonic") harmony.tonic=parseTonic(value);
         else if (opt=="--scale") harmony.scale=parseScale(value);
         else if (opt=="--filter") harmony.filter=parseFilter(value);
+        else if (opt=="--suggest") suggestRoot=value;
         else { std::fprintf(stderr,"Unknown option: %s\n",opt.c_str()); return 2; }
+    }
+    if (!suggestRoot.empty()) {
+        showSuggestions(harmony,suggestRoot.c_str());
+        return 0;
     }
     if (listed) { listPorts(); return 0; }
     if (!inputChosen || !outputChosen) { std::puts("Choose ports with --list and --input N --output M"); return 2; }
