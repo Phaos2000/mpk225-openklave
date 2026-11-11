@@ -39,6 +39,9 @@ BRIDGE = r'''static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};
 // The reset interrupt calls this while foreground MIDI servicing is paused.
 void ResetMidiForUsbBus(){
   OpenKlaveMidiBridge.resetForUsbBus();
+#if MPK225_FACTORY_KEYBED && MPK225_DIN_TX_LAB
+  Mpk225NativeDin.resetForUsbBus();
+#endif
 #if MPK225_FACTORY_KEYBED && MPK225_DIN_RX_LAB
   Mpk225NativeDinRx.clear();
 #endif

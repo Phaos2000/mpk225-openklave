@@ -28,6 +28,19 @@ public:
     unsigned size() const { return count_; }
     unsigned freeSlots() const { return kCapacity-count_; }
     void clear() { head_=tail_=count_=0; }
+    // An interrupted USB connection can otherwise leave a hardware DIN
+    // receiver holding notes whose matching note-offs were discarded.
+    // These 32 CC messages are exactly 96 serial bytes (< 128 capacity).
+    void panicAllChannels() {
+        static_assert(kCapacity>=96,"full 16-channel MIDI cleanup fits");
+        clear();
+        for(unsigned ch=0;ch<16;++ch) {
+            appendRaw(static_cast<uint8_t>(0xB0u|ch));
+            appendRaw(120); appendRaw(0); // All Sound Off
+            appendRaw(static_cast<uint8_t>(0xB0u|ch));
+            appendRaw(123); appendRaw(0); // All Notes Off
+        }
+    }
     // Preserve the USB event in its source queue if this transfer cannot
     // be accepted whole. A caller must explicitly bind the MIDI DIN cable.
     bool accept(const UsbMidiOutEvent& event,uint8_t boundCable) {
@@ -54,6 +67,11 @@ public:
         return true;
     }
 private:
+    void appendRaw(uint8_t b) {
+        fifo_[tail_]=b;
+        tail_=(tail_+1u)%kCapacity;
+        ++count_;
+    }
     uint8_t fifo_[kCapacity]{};
     unsigned head_=0,tail_=0,count_=0;
 };
@@ -91,6 +109,13 @@ public:
                (enableRx?(1u<<2):0u);
     }
     unsigned queuedBytes() const { return tx_.size(); }
+    void resetForUsbBus() {
+        // No physical MIDI was transmitted before the first configuration.
+        // After physical TX begins, always prioritize 16-channel cleanup
+        // over stale queued traffic on a bus reset/reconfiguration.
+        if(transmitting_ && hasTransmitted_) tx_.panicAllChannels();
+        else tx_.clear();
+    }
     bool enqueue(const UsbMidiOutEvent& ev,uint8_t cable) {
         return ready_ && transmitting_ && tx_.accept(ev,cable);
     }
@@ -111,6 +136,7 @@ public:
         reg(0x40013808u)=kBrr;
         reg(0x4001380Cu)=controlBits(enableTx,enableRx);
         transmitting_=enableTx;receiving_=enableRx;receiveErrors_=0;
+        hasTransmitted_=false;
         tx_.clear();
         ready_=true;
         return true;
@@ -135,7 +161,10 @@ public:
         if(!ready_ || !transmitting_ || tx_.size()==0) return;
         if(!(reg(0x40013800u)&(1u<<7))) return; // USART1_SR TXE
         uint8_t byte=0;
-        if(tx_.pop(byte)) reg(0x40013804u)=byte; // USART1_DR
+        if(tx_.pop(byte)) {
+            reg(0x40013804u)=byte; // USART1_DR
+            hasTransmitted_=true;
+        }
     }
 private:
     static volatile uint32_t& reg(uint32_t address) {
@@ -144,5 +173,6 @@ private:
     Mpk225DinTxQueue tx_{};
     uint32_t receiveErrors_=0;
     bool ready_=false,transmitting_=false,receiving_=false;
+    bool hasTransmitted_=false;
 };
 } // namespace mpk225

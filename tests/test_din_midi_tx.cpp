@@ -43,6 +43,20 @@ int main() {
     assert(total==6 && packet[0]==0x90 && packet[1]==0x11);
     q.clear();
     assert(!q.pop(byte));
+    // Every channel receives All Sound Off then All Notes Off after an
+    // interrupted USB connection; all prior pending notes are replaced.
+    assert(q.accept(e,2));
+    q.panicAllChannels();
+    assert(q.size()==96);
+    for(unsigned ch=0;ch<16;++ch) {
+        assert(q.pop(byte) && byte==(0xB0u|ch));
+        assert(q.pop(byte) && byte==120);
+        assert(q.pop(byte) && byte==0);
+        assert(q.pop(byte) && byte==(0xB0u|ch));
+        assert(q.pop(byte) && byte==123);
+        assert(q.pop(byte) && byte==0);
+    }
+    assert(q.size()==0 && !q.pop(byte));
     static_assert(Mpk225DinUart1::kBrr==0x600,"exact 31.25 kbaud from 48MHz PCLK2");
     static_assert(Mpk225DinUart1::matchesClock(0x51440Au),
                   "accept pinned 48MHz PLL/USB clock");
