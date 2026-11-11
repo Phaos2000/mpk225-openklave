@@ -26,6 +26,12 @@ public:
             ((old^static_cast<uint16_t>((rx<<12u)|(tx<<4u)))&0x3030u) |
             (old&0x8080u));
     }
+    // A fresh EP0 SETUP supersedes any older IN completion already latched.
+    // That old CTR_TX still needs acknowledging, but must not advance the
+    // newly started descriptor/status stage.
+    static constexpr bool ep0SetupAbortsTx(unsigned endpoint,uint16_t flags) {
+        return endpoint==0 && (flags&0x8880u)==0x8880u;
+    }
     static constexpr uint16_t kPmaEp0Rx=0x40, kPmaEp0Tx=0x48;
     static constexpr uint16_t kPmaEp1Rx=0x50, kPmaEp2Tx=0x90;
     static constexpr uint16_t kPmaEp3Tx=0xD0;
@@ -116,15 +122,18 @@ public:
             const unsigned number=pending&0x000Fu;
             if(number>3) { ++errors_; break; }
             const uint16_t flags=ep(number);
+            // Discard the old EP0 IN completion BEFORE arming the response
+            // to a new SETUP, so it cannot complete that new transfer early.
+            const bool abortOldTx=ep0SetupAbortsTx(number,flags);
+            if(abortOldTx) ackEndpoint(0,false,true);
             if(flags&0x8000u) {
-                // EP0 SETUP takes precedence, even if CTR_TX also set.
                 const bool setup=(number==0) && ((flags&0x0800u)!=0);
                 ackEndpoint(number,true,false);
                 if(number==0) controlOut(setup);
                 else if(number==1) hostMidiReceived();
                 else ++errors_;
             }
-            if((flags&0x0080u) && !((flags&0x8000u) && (flags&0x0800u) && number==0)) {
+            if((flags&0x0080u) && !abortOldTx) {
                 ackEndpoint(number,false,true);
                 if(number==0) controlTxCompleted();
                 // EP2/EP3 are now NAK; foreground may schedule next message.

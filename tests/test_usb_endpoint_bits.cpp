@@ -34,5 +34,15 @@ int main() {
         assert((after&0x4040u)==(old&0x4040u));
         assert((after&0x070Fu)==(old&0x070Fu));
     }
-    std::puts("PASS: STM32 USB EP status updates preserve pending CTR flags and DTOG bits");
+    // A new SETUP and stale EP0 CTR_TX in the same interrupt must
+    // acknowledge the old completion without advancing the fresh EP0 reply.
+    static_assert(Mpk225UsbHardware::ep0SetupAbortsTx(0,0x8880u),
+                  "new SETUP supersedes old IN completion");
+    static_assert(!Mpk225UsbHardware::ep0SetupAbortsTx(0,0x8080u),
+                  "ordinary RX+TX completions are not SETUP");
+    static_assert(!Mpk225UsbHardware::ep0SetupAbortsTx(0,0x0880u),
+                  "SETUP without CTR_RX is not a fresh SETUP");
+    static_assert(!Mpk225UsbHardware::ep0SetupAbortsTx(1,0x8880u),
+                  "non-control endpoints are unaffected");
+    std::puts("PASS: STM32 USB EP status/CTR flags and stale EP0 SETUP completion");
 }
