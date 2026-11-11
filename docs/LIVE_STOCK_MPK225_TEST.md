@@ -8,6 +8,19 @@ Use the **MPK225 offline build and tests** workflow on the development branch's 
 
 The executable uses Windows' built-in **WinMM MIDI API**; no Python needed. It does not transmit SysEx and **refuses to open an output port whose name includes MPK225**.
 
+## Observe the actual MPK225 keys and controls first (no output)
+
+The same Windows executable has a **read-only MIDI monitor** that does not open a MIDI output port:
+
+```bat
+MPK225-Live-Chords.exe --list
+MPK225-Live-Chords.exe --monitor --input 0
+```
+
+Replace `0` with the input index named **MPK225**. Press two or three keys at different velocities; release them, turn an encoder, move the pitch wheel, and optionally tap a pad. Each short channel-voice message is printed with the channel, event type, note/CC number and 7-bit value. Stop using **Ctrl+C**; the program reports note-on and note-off totals. No SysEx messages are sent or intercepted, and no firmware state changes.
+
+This verifies the keyboard's **factory USB-MIDI output**, not its internal raw keybed wiring. If note-on counts exceed note-off counts after releasing all keys, capture the output for diagnosis. On some devices Note Off is delivered as Note On velocity zero; the monitor counts those correctly. Do not keep a DAW connected exclusively to the same MIDI input during capture.
+
 ## Connect MIDI safely
 
 1. Connect your stock MPK225 to Windows by USB, normal mode. Do **not** press update-mode buttons.
