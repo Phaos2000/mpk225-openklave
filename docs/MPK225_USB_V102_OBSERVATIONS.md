@@ -40,7 +40,7 @@ The factory configuration's HID Interface 2 sets `bNumEndpoints=1` yet USBTreeVi
 
 - `include/Mpk225UsbDescriptors.h`: a **169-byte configuration descriptor model** and 18-byte device descriptor, with the observed composite topology, jack IDs, endpoint attributes and anomaly.
 - `include/Mpk225UsbControl.h`: allocation-free **EP0 descriptor request and 8-byte packet model**, including strings and HID report.
-- `include/Mpk225UsbDeviceState.h`: EP0 enumeration state machine, including address/configuration and HID control requests.
+- `include/Mpk225UsbDeviceState.h`: EP0 enumeration state machine, including address/configuration and HID control requests. No-data control requests use IN status; GET_STATUS rejects nonexistent interface/endpoint recipients (including the anomalous HID 0x03 OUT descriptor).
 - `include/Mpk225UsbHardware.h`: **experimental, ARM-compiled STM32F103 composite USB MMIO driver**. In the `FACTORY_SCAN=1` candidate it is connected to the USB interrupt and MIDI foreground loop. Uses EP1 OUT / EP2 IN 64-byte bulk, EP3 IN HID interrupt; the old MPK249 transport remains only in the reference branch.
 - `tests/test_factory_usb_descriptors.cpp`, `tests/test_usb_control_model.cpp`, `tests/test_usb_device_state.cpp`, `tests/test_usb_pma_layout.cpp`: descriptor, EP0 state, PMA size/overlap tests. **EP1's COUNT_RX was corrected from 0x8400 (32 B) to 0x8800 (64 B)**; a regression test verifies the STM32 register encoding.
 

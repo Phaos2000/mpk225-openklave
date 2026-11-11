@@ -51,9 +51,19 @@ public:
             return true;
         }
         // The MPK225 is bus-powered; neither remote wake nor self power.
-        if (req.bRequest==0 && (req.bmRequestType==0x80 ||
-             req.bmRequestType==0x81 || req.bmRequestType==0x82) &&
-             req.wLength>=2 && req.wValue==0) {
+        if (req.bRequest==0 && req.wLength>=2 && req.wValue==0) {
+            // GET_STATUS is not a query for arbitrary interface or endpoint
+            // numbers. Endpoint 0 is present before SET_CONFIGURATION;
+            // the other addresses exist only after configuration 13.
+            const bool target=
+                (req.bmRequestType==0x80 && req.wIndex==0) ||
+                (req.bmRequestType==0x81 && configured() && req.wIndex<=2) ||
+                (req.bmRequestType==0x82 && (
+                    req.wIndex==0x00 || req.wIndex==0x80 ||
+                    (configured() && (req.wIndex==0x01 ||
+                                      req.wIndex==0x82 ||
+                                      req.wIndex==0x83))));
+            if (!target) return false;
             scratch_[0]=scratch_[1]=0;
             current_={scratch_,2}; dataIn(req.wLength); return true;
         }
@@ -74,12 +84,14 @@ public:
             current_={scratch_,1}; dataIn(req.wLength); return true;
         }
         if (req.bmRequestType==0x81 && req.bRequest==10 &&
-            req.wValue==0 && req.wIndex<=2 && req.wLength>=1) {
+            configured() && req.wValue==0 && req.wIndex<=2 &&
+            req.wLength>=1) {
             scratch_[0]=0; current_={scratch_,1}; dataIn(req.wLength);
             return true;
         }
         if (req.bmRequestType==0x01 && req.bRequest==11 &&
-            req.wLength==0 && req.wValue==0 && req.wIndex<=2) {
+            configured() && req.wLength==0 && req.wValue==0 &&
+            req.wIndex<=2) {
             stage_=ControlStage::StatusIn; return true;
         }
         // HID keyboard class requests, always interface 2.
@@ -180,9 +192,11 @@ public:
 
 private:
     void dataIn(uint16_t wLength) {
-        // An IN-direction request with wLength==0 has no data stage.
-        // Go straight to its OUT status stage; do not wait for a data IN ACK.
-        stage_=wLength?ControlStage::DataIn:ControlStage::StatusOut;
+        // Without a data stage, USB ignores bmRequestType's direction
+        // bit and uses an IN zero-length status transaction (USB 1.1 9.3.1).
+        // In particular, GET_DESCRIPTOR with wLength=0 must not wait for
+        // an OUT status that the host will never send.
+        stage_=wLength?ControlStage::DataIn:ControlStage::StatusIn;
         sent_=0;
         // Zero-length termination only when actual descriptor shorter than
         // requested and exact multiple of EP0's eight-byte packet.
