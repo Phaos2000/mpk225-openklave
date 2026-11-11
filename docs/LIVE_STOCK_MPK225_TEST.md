@@ -23,6 +23,17 @@ The executable uses Windows' built-in **WinMM MIDI API**; no Python needed. It d
 
 The program chords all note events on the selected input MIDI channel (default 1). If your pads transmit on the same channel as the keyboard, pads will also trigger chords. Set pads to a separate channel in the Akai factory preset or leave them unused for this test. Other channel-voice MIDI (pitch wheel, CC, notes on other channels) passes through unchanged.
 
+## Inspect every compatible chord without connecting a keyboard
+
+The Windows program now includes an **offline suggestion query**. It does not open any MIDI ports or transmit messages:
+
+```bat
+MPK225-Live-Chords.exe --suggest G --tonic C --scale major --filter strict
+MPK225-Live-Chords.exe --suggest all --tonic C --scale major --filter strict
+```
+
+The first command lists *every compatible G-rooted chord quality* in C major, ranked by a deterministic heuristic; the second lists all compatible roots and qualities. For comparison try `--filter borrowed` or `--filter any`. The `non-scale` column reports the distinct voiced pitch classes outside the selected scale, not the complete theoretical chord spelling. A score is useful for ordering options, **not proof of musical correctness**.
+
 ## Optional live smart-chord mode
 
 The same executable also supports an **opt-in** scale-aware mode with the actual `SmartHarmony` and `VoicingPlanner` code:
