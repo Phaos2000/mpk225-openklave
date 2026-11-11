@@ -21,22 +21,54 @@ struct EventStack {
 static_assert(sizeof(EventStack) <= 0x800,
               "Event FIFO would leave less than 2KiB for the ARM stack");
 
-inline void GlobalEventStackOverflow() {
-    // Not a recovery strategy: prevents overwriting RAM. Must be replaced
-    // with verified event-priority handling before any real hardware rollout.
-    volatile uint32_t halted = 1;
-    while (halted) { /* intentional no-op; fail closed on overflow */ }
+// MIDI input can stall when the USB host is absent. Never spin forever in
+// the timer ISR on a full event queue. Low-priority CC/pressure events may be
+// discarded; losing any note on/off requests a deterministic MIDI panic once
+// the foreground consumer can run again. No heap, no logging in an ISR.
+inline volatile uint32_t gEventQueueDropped = 0;
+inline volatile uint32_t gEventQueueNeedsPanic = 0;
+
+constexpr bool eventCouldHoldNote(uint32_t type) {
+    return type == 0xFFu || type == 0xFEu ||
+           type == 900u || type == 901u ||
+           type == 300u || type == 301u;
+}
+
+inline void recordEventQueueOverflow(Event e) {
+    ++gEventQueueDropped;
+    if (eventCouldHoldNote(e.A)) gEventQueueNeedsPanic = 1;
+}
+
+inline bool takeEventQueuePanic() {
+    const bool pending = gEventQueueNeedsPanic != 0;
+    gEventQueueNeedsPanic = 0;
+    return pending;
+}
+
+inline void resetEventQueue(EventStack* es) {
+    if (!es) return;
+    es->top = -1;
+    es->scratch_2 = 0;
+    es->scratch_3 = 0;
 }
 
 [[maybe_unused]] static EventStack* GlobalEventStack = reinterpret_cast<EventStack*>(0x2000B000u);
 
-constexpr void PushEvent(EventStack* es, Event e) {
-    if (es->capacity <= 0 || es->capacity > 100 || es->top >= es->capacity - 1)
-        GlobalEventStackOverflow();
+// The original call sites ignore the return result, which remains compatible.
+// Never overwrite a pending note-off when capacity is exhausted.
+constexpr bool PushEvent(EventStack* es, Event e) {
+    if (!es || es->capacity <= 0 || es->capacity > 100 ||
+        es->top >= es->capacity - 1 ||
+        es->scratch_3 >= static_cast<uint32_t>(es->capacity)) {
+        recordEventQueueOverflow(e);
+        return false;
+    }
     es->Buffer[es->scratch_3] = e;
-    es->scratch_3 = (es->scratch_3 + 1) % static_cast<uint32_t>(es->capacity);
+    es->scratch_3 = (es->scratch_3 + 1u) % static_cast<uint32_t>(es->capacity);
     ++es->top;
+    return true;
 }
+
 constexpr Event PopEvent(EventStack* es) {
     if (es->top < 0) return Event{0,0,0,0};
     Event result = es->Buffer[es->scratch_2];
