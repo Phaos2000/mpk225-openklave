@@ -143,6 +143,43 @@ struct ChordRouter {
     std::exit(2);
 }
 
+[[maybe_unused]] static uint8_t parseTonic(const char* name) {
+    const std::string notes[] = {"C","C#","Db","D","D#","Eb","E","F",
+                                  "F#","Gb","G","G#","Ab","A","A#","Bb","B"};
+    const uint8_t values[] = {0,1,1,2,3,3,4,5,6,6,7,8,8,9,10,10,11};
+    for (size_t i=0;i<sizeof(values)/sizeof(values[0]);++i)
+        if (notes[i] == name) return values[i];
+    std::fprintf(stderr, "Unknown tonic '%s' (examples: C, F#, Bb)\n",name);
+    std::exit(2);
+}
+
+[[maybe_unused]] static ScaleMode parseScale(const char* name) {
+    struct Choice { const char* label; ScaleMode value; };
+    const Choice modes[] = {
+        {"major",ScaleMode::Major}, {"minor",ScaleMode::NaturalMinor},
+        {"dorian",ScaleMode::Dorian}, {"phrygian",ScaleMode::Phrygian},
+        {"lydian",ScaleMode::Lydian}, {"mixolydian",ScaleMode::Mixolydian},
+        {"locrian",ScaleMode::Locrian}, {"harmonic-minor",ScaleMode::HarmonicMinor},
+        {"melodic-minor",ScaleMode::MelodicMinor},
+        {"major-pentatonic",ScaleMode::MajorPentatonic},
+        {"minor-pentatonic",ScaleMode::MinorPentatonic},
+        {"chromatic",ScaleMode::Chromatic}
+    };
+    for (const auto& mode : modes)
+        if (name == std::string(mode.label)) return mode.value;
+    std::fprintf(stderr,"Unknown scale '%s'. Try major, minor, dorian, harmonic-minor, chromatic.\n",name);
+    std::exit(2);
+}
+
+[[maybe_unused]] static mpk225::HarmonyFilter parseFilter(const char* name) {
+    const std::string filter(name);
+    if (filter=="strict") return mpk225::HarmonyFilter::Strict;
+    if (filter=="borrowed") return mpk225::HarmonyFilter::Borrowed;
+    if (filter=="any") return mpk225::HarmonyFilter::Any;
+    std::fprintf(stderr,"Unknown filter '%s' (strict / borrowed / any)\n",name);
+    std::exit(2);
+}
+
 static int selfTest() {
     ChordRouter router;
     router.engine.setChordType(ChordType::Major7);
@@ -166,7 +203,42 @@ static int selfTest() {
     if (messages.size()!=21) return 8;   // 4 more on + 4 off
     for (unsigned n=0;n<128;++n)
         if (router.engine.noteReferences(static_cast<uint8_t>(n))) return 9;
-    std::printf("PASS: live host MIDI routing, 49-chord engine, overlapping notes, all-offs\n");
+    // Smart mode: C-key generates multiple notes all in C major.
+    ChordRouter smart;
+    smart.smart=true;
+    smart.harmony.tonic=0;
+    smart.harmony.scale=ScaleMode::Major;
+    std::vector<uint32_t> result;
+    auto track=[&](uint32_t msg){result.push_back(msg);};
+    smart.consume(pack(0x90,60,91),track);
+    if (result.size()<3 || result.size()>5 || !smart.harmony.hasPrevious) return 10;
+    const uint16_t scale=SmartHarmony::scaleMask(0,ScaleMode::Major);
+    for (auto msg: result) {
+        if ((msg&0xF0u)!=0x90u) return 11;
+        const unsigned pitch=static_cast<unsigned>((msg>>8)&0x7Fu);
+        if (!(scale & (1u<<(pitch%12)))) return 12;
+    }
+    const size_t generated = result.size();
+    smart.consume(pack(0x90,60,0),track); // MIDI velocity-zero note off
+    if (result.size()!=generated*2) return 13;
+    for (unsigned n=0;n<128;++n)
+        if (smart.engine.noteReferences(static_cast<uint8_t>(n))) return 14;
+    result.clear();
+    smart.consume(pack(0x90,61,88),track); // C# is outside C major: raw-note fallback
+    if (smart.smartFallbacks!=1 || result.size()!=1 ||
+        ((result[0]>>8)&0x7Fu)!=61) return 15;
+    smart.consume(pack(0x80,61,0),track);
+    if (result.size()!=2 || ((result[1]>>8)&0x7Fu)!=61) return 16;
+    result.clear();
+    smart.consume(pack(0x90,67,95),track); // G chord follows the previous C chord
+    if (result.empty() || result.size()>5) return 17;
+    for (auto msg: result) {
+        if (!(scale & (1u<<(((msg>>8)&0x7Fu)%12)))) return 18;
+    }
+    smart.stop(track);
+    for (unsigned n=0;n<128;++n)
+        if (smart.engine.noteReferences(static_cast<uint8_t>(n))) return 19;
+    std::printf("PASS: live fixed/smart MIDI, in-key suggestions, fallback, overlap, all-offs\n");
     return 0;
 }
 
@@ -209,14 +281,20 @@ static bool numberArg(const char* arg, unsigned& result) {
 int main(int argc, char** argv) {
     unsigned in=0, out=0, channel=1;
     ChordType chord=ChordType::Major7;
+    bool useSmart=false;
+    HarmonyContext harmony{};
     bool inputChosen=false, outputChosen=false, listed=false;
     for (int a=1;a<argc;++a) {
         const std::string opt(argv[a]);
         if (opt=="--selftest") return selfTest();
         if (opt=="--list") { listed=true; continue; }
+        if (opt=="--smart") { useSmart=true; continue; }
         if (opt=="--help") {
             std::puts("Usage: MPK225-Live-Chords.exe --list");
             std::puts("       MPK225-Live-Chords.exe --input N --output M --chord maj7 [--channel 1]");
+            std::puts("       MPK225-Live-Chords.exe --input N --output M --smart --tonic C --scale major [--filter strict]");
+            std::puts("Smart filters: strict / borrowed / any. Modes include minor, dorian, lydian, harmonic-minor.");
+            std::puts("Smart chooses a compatible quality per pressed root, then voices it near the key.");
             std::puts("Input = MPK225 MIDI; Output = separate virtual MIDI or synth port (NOT MPK225).");
             std::puts("Chord names: maj m7 maj7 7 m9 13 7#9 etc. Run --chord invalid to list all.");
             std::puts("Press Ctrl+C to stop and release generated notes. No SysEx, no flashing.");
@@ -228,6 +306,9 @@ int main(int argc, char** argv) {
         else if (opt=="--output") { if(!numberArg(value,out))return 2; outputChosen=true; }
         else if (opt=="--channel") { if(!numberArg(value,channel)||channel<1||channel>16)return 2; }
         else if (opt=="--chord") chord=parseChord(value);
+        else if (opt=="--tonic") harmony.tonic=parseTonic(value);
+        else if (opt=="--scale") harmony.scale=parseScale(value);
+        else if (opt=="--filter") harmony.filter=parseFilter(value);
         else { std::fprintf(stderr,"Unknown option: %s\n",opt.c_str()); return 2; }
     }
     if (listed) { listPorts(); return 0; }
@@ -258,12 +339,15 @@ int main(int argc, char** argv) {
     ChordRouter router;
     router.inputChannel=static_cast<uint8_t>(channel-1);
     router.engine.setChordType(chord);
+    router.smart=useSmart;
+    router.harmony=harmony;
     if (midiInStart(min)!=MMSYSERR_NOERROR) {
         midiInClose(min); midiOutClose(mout); std::puts("Could not start MIDI input"); return 2;
     }
     SetConsoleCtrlHandler(ctrlHandler,TRUE);
-    std::printf("ACTIVE: %s -> %s; chord=%s; key channel=%u.\n",
-                cin.szPname,cout.szPname,router.engine.chordName(),channel);
+    std::printf("ACTIVE: %s -> %s; mode=%s; fixed chord=%s; key channel=%u.\n",
+                cin.szPname,cout.szPname,useSmart?"SMART":"FIXED",
+                router.engine.chordName(),channel);
     std::puts("Read MIDI from keyboard; send channel voice to selected output. Press Ctrl+C to stop.");
     auto send=[&](uint32_t data) {
         MMRESULT e=midiOutShortMsg(mout,data);
