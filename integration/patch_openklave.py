@@ -115,6 +115,15 @@ def patch_kernel(src: str) -> str:
     reset = one_replace(reset, 'b->count_tx= 4;', 'b->count_tx= 0;',
                         'EP1 TX empty on USB reset')
     src = src[:a] + reset + src[b:]
+    # Akai official v1.02 shared image has EXACTLY 16 bytes at 0x08033800:
+    # 41 44 34 41 5F 52 69 63 68 61 72 64 00 01 00 02
+    # OpenKlave's upstream token omitted the separator byte (15 bytes).
+    # This is an image-integrity correction, NOT proof of boot acceptance:
+    # the separate 0x08033FFC footer and bootloader checks remain unknown.
+    src = one_replace(src,
+                      "{'A','D','4','A','_','R','i','c','h','a','r','d', 0x1 , 0x0 , 0x2}",
+                      "{'A','D','4','A','_','R','i','c','h','a','r','d', 0x0, 0x1, 0x0, 0x2}",
+                      'match official Akai 16-byte boot signature')
     # OpenKlave's device descriptor is declared in an unusual pre-swap
     # order; NewDeviceConfiguration swaps USB multi-byte fields into little
     # endian PMA bytes. 0x00,0x23 -> 0x23,0x00 -> USB PID 0x0023.
