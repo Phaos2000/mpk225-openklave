@@ -54,6 +54,12 @@ The ZIP must not be represented as a complete flash backup, and application acce
 
 Applied the exact developer-branch linker/test corrections to the pre-existing v0.2 packaged fixture and ran `tests/test_patch_tool.py` plus Python syntax checks. **Both passed.** This validates the guarded patch fixture and boundary check, **not** an ARM firmware build or device recovery.
 
+## Independent recovery mechanism inside the MCU (not tested on MPK225)
+
+ST's [AN2606, Table 3, p. 40](https://www.st.com/resource/en/application_note/an2606-stm32-microcontroller-system-memory-boot-mode-stmicroelectronics.pdf) confirms an **ST factory ROM bootloader** in STM32F10xxx *high-density* parts, communicating via **USART1** (version 2.2). This is distinct from Akai's 24 KiB application-flash USB-MIDI bootloader. The ST factory ROM bootloader does **not** provide USB DFU on the STM32F103; that is listed for STM32F105/107.
+
+It offers a potential *last-resort* programming path if the Akai bootloader is damaged, but only if the keyboard's BOOT configuration and USART1 pins can be accessed safely. There is **no evidence yet** of a user-accessible serial recovery connector on the MPK225. Readout protection and any need to erase protected flash still apply; **do not change BOOT pins or experiment with a serial adapter on the user's keyboard yet**.
+
 ## Outcome
 
 **Firmware flashing is blocked.** We can continue Windows-side chord engine and MIDI interface development safely, while the hardware/recovery path remains unresolved. Never describe this as a verified MPK225 firmware backup or safe recovery process.
