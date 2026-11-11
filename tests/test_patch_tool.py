@@ -98,6 +98,20 @@ burn:
     assert 'decodeMpk225FactoryScan(event)' in k
     assert (out/'src/KeybedContactVelocity.h').is_file()
     assert (out/'src/EmbeddedSmartChordController.h').is_file()
+    assert (out/'src/Mpk225UsbHardware.h').is_file()
+    assert (out/'src/Mpk225UsbDeviceState.h').is_file()
+    assert (out/'src/Mpk225UsbControl.h').is_file()
+    assert (out/'src/Mpk225UsbDescriptors.h').is_file()
+    assert 'static mpk225::Mpk225UsbHardware Mpk225NativeUsb{};' in k
+    assert 'Mpk225NativeUsb.irq();' in k
+    assert 'Mpk225NativeUsb.reset();' in k
+    assert 'Mpk225NativeUsb.submitMidiIn(bulk.bytes,bulk.length)' in k
+    assert 'OpenKlaveMidiBridge.takeUsbBulkFrame();' in k
+    assert 'Mpk225NativeUsb.submitHidIn();' in k
+    assert k.index('static mpk225::Mpk225UsbHardware Mpk225NativeUsb{};') < k.index('void usbReset(void){')
+    assert 'void usb(){\n#if MPK225_FACTORY_KEYBED' in k
+    assert '#endif\n}' in k
+
     assert (out/'src/SmartChordDisplay.h').is_file()
     assert 'void UpdateSmartChordDisplay(){' in k
     assert 'formatSmartChordStatus(line,' in k
