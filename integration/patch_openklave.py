@@ -117,8 +117,8 @@ def patch_makefile(src: str) -> str:
     # Default remains passthrough. Test-build chord-on-boot only when
     # CHORD_ON_BOOT=1 is explicitly passed to make; never a release setting.
     src = one_replace(src, 'CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER',
-                      'CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER\\n'
-                      'CHORD_ON_BOOT ?= 0\\n'
+                      'CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER\n'
+                      'CHORD_ON_BOOT ?= 0\n'
                       'CFLAGS += -DMPK225_CANDIDATE_CHORD_ON_BOOT=$(CHORD_ON_BOOT)',
                       'select test-only startup chord mode')
     # Use the freestanding Cortex-M3 ABI without libstdc++: the candidate
