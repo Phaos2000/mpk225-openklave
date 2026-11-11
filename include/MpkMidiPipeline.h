@@ -85,6 +85,22 @@ public:
         return true;
     }
 
+    // Optional absolute MIDI voicing chosen by VoicingPlanner. The physical
+    // key remains the ownership key so its normal key-up releases all voices.
+    // Invalid requests or full output queues have NO note-state side effects.
+    bool playPlannedVoicing(uint8_t key, uint8_t velocity,
+                           const uint8_t* notes, uint8_t count) {
+        if (!chordMode_ || key >= 128 || velocity == 0 || notes == nullptr ||
+            count == 0 || count > ChordEngine::kVoicesPerKey)
+            return false;
+        for (uint8_t i = 0; i < count; ++i)
+            if (notes[i] > 127 || (i && notes[i] <= notes[i-1]))
+                return false;
+        // Allow the worst case: five old notes off, five new notes on.
+        if (fifo_.freeSlots() < 2 * ChordEngine::kVoicesPerKey) return false;
+        return fifo_.append(chords_.noteOnVoicing(key, velocity, notes, count));
+    }
+
     // Returns false only when an input needs retry due to FIFO backpressure.
     // In that case neither the MIDI output nor the internal note state changes.
     // Returns true for unknown event types after ignoring them, NOT for hardware
