@@ -170,7 +170,7 @@ public:
             const uint8_t n = notes[i];
             held.notes[held.count++] = n;
             if (references_[n]++ == 0) {
-                result.append(0x90, n, velocity);
+                result.append(0x90, n, static_cast<uint8_t>(velocity > 127 ? 127 : velocity));
             }
         }
         return result;
