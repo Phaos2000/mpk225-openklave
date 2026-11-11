@@ -38,6 +38,14 @@ public:
     static constexpr bool ep0SetupAbortsTx(unsigned endpoint,uint16_t flags) {
         return endpoint==0 && (flags&0x8880u)==0x8880u;
     }
+    // Reset-only EPnR write. CTR bits are write-zero-to-clear, and
+    // DTOG bits are write-one-to-toggle; unlike ordinary status changes
+    // neither old CTR flags nor old DATA1 toggles may survive a bus reset.
+    static constexpr uint16_t endpointResetWrite(uint16_t old,
+                                                  uint16_t desired) {
+        return static_cast<uint16_t>((desired&0x070Fu) |
+            ((old^desired)&0x3030u) | (old&0x4040u));
+    }
     static constexpr uint16_t kPmaEp0Rx=0x40, kPmaEp0Tx=0x48;
     static constexpr uint16_t kPmaEp1Rx=0x50, kPmaEp2Tx=0x90;
     static constexpr uint16_t kPmaEp3Tx=0xD0;
@@ -191,13 +199,12 @@ private:
     }
     static void configureEp(unsigned number,uint16_t type,
                              unsigned rxStatus,unsigned txStatus) {
+        // Called only while resetting the bus: discard completion flags and
+        // force both data toggles to DATA0 for the fresh USB address.
         const uint16_t old=ep(number);
         const uint16_t desired=static_cast<uint16_t>(type | number |
                                   (rxStatus<<12u) | (txStatus<<4u));
-        // EP STAT and DTOG bits toggle on write-1; CTR bits clear on
-        // write-0. Do NOT acknowledge either CTR while changing status.
-        ep(number)=static_cast<uint16_t>(
-           (desired&0x070Fu) | ((desired^old)&0x3030u) | (old&0x8080u));
+        ep(number)=endpointResetWrite(old,desired);
     }
     static void setEndpoint(unsigned number,unsigned rx,unsigned tx) {
         const uint16_t old=ep(number);
