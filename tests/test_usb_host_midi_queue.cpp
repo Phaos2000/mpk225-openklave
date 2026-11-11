@@ -59,5 +59,37 @@ int main() {
     assert(!q.appendFrame(frame,3,invalid));
     assert(!q.appendFrame(frame,65,invalid));
     assert(q.appendFrame(frame,0,invalid) && q.size()==0);
-    std::puts("PASS: USB MIDI OUT four-cable FIFO, raw CIN, wrap, overflow backpressure and invalid-cable filtering");
+    // A packet for an unmapped cable cannot obstruct valid DIN traffic
+    // assigned to another cable. The unhandled events stay fully queued.
+    assert(!q.peekCable(4,event) && !q.popCable(4,event));
+    assert(!q.peekCable(2,event) && !q.popCable(2,event));
+    for(unsigned i=0;i<4;++i) {
+        assert(q.appendFrame(frame,64,invalid) && invalid==0);
+    }
+    assert(q.size()==64);
+    for(unsigned n=0;n<16;++n) {
+        assert(q.peekCable(2,held));
+        assert(held.cable()==2 && held.data[2]==50+4*(n%4));
+        assert(q.popCable(2,event));
+        for(unsigned j=0;j<4;++j) assert(held.data[j]==event.data[j]);
+    }
+    assert(q.size()==48);
+    for(unsigned i=0;i<64;++i) {
+        if(i%4==2)continue;
+        assert(q.pop(event));
+        assert(event.cable()==i%4 && event.data[2]==48+i%16);
+    }
+    assert(q.size()==0 && !q.popCable(2,event));
+    // Exercise removal from a wrapped ring: old head is nonzero while
+    // the next appended USB frame crosses the physical array boundary.
+    for(unsigned i=0;i<4;++i)assert(q.appendFrame(frame,64,invalid));
+    for(unsigned i=0;i<40;++i)assert(q.pop(event));
+    for(unsigned i=0;i<2;++i)assert(q.appendFrame(frame,64,invalid));
+    assert(q.size()==56);
+    unsigned cable2Count=0;
+    while(q.popCable(2,event)){++cable2Count;assert(event.cable()==2);}
+    assert(cable2Count==14 && q.size()==42);
+    while(q.pop(event)) assert(event.cable()!=2);
+    assert(q.size()==0);
+    std::puts("PASS: USB MIDI OUT four-cable FIFO, raw CIN, wrapped selective dequeue, no cross-cable loss, backpressure");
 }

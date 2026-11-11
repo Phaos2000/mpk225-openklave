@@ -70,6 +70,17 @@ public:
     bool peekHostMidi(UsbMidiOutEvent& out) const {
         return hostMidi_.peek(out);
     }
+    // Select only the explicitly verified physical destination cable.
+    // An unsupported Port A/B/Remote event is never dropped to unstick DIN.
+    bool peekHostMidiCable(uint8_t cable,UsbMidiOutEvent& out) const {
+        return hostMidi_.peekCable(cable,out);
+    }
+    bool popHostMidiCable(uint8_t cable,UsbMidiOutEvent& out) {
+        if(!hostMidi_.popCable(cable,out)) return false;
+        if(ep1Pending_ && pendingHostMidiFits(hostMidi_.size(),bt(1,3)&0x3FFu))
+            serviceRxPending();
+        return true;
+    }
     // Complete an accepted incoming four-byte MIDI event.
     bool popHostMidi(UsbMidiOutEvent& out) {
         if(!hostMidi_.pop(out)) return false;

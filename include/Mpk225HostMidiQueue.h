@@ -40,6 +40,34 @@ public:
         out=packets_[head_];
         return true;
     }
+    // First packet for a specific advertised USB cable. Other cables
+    // remain queued and in order; no implicit DIN/Remote routing.
+    bool peekCable(uint8_t cable,UsbMidiOutEvent& out) const {
+        if(cable>=kMpk225UsbCableCount) return false;
+        for(unsigned i=0;i<count_;++i) {
+            const UsbMidiOutEvent& current=packets_[(head_+i)%kCapacity];
+            if(current.cable()==cable){out=current;return true;}
+        }
+        return false;
+    }
+    // A verified sink may ACK only its own cable. Removing an event from
+    // the middle shifts at most 63 entries (bounded); every other packet
+    // retains FIFO order for future distinct destinations.
+    bool popCable(uint8_t cable,UsbMidiOutEvent& out) {
+        if(cable>=kMpk225UsbCableCount) return false;
+        for(unsigned i=0;i<count_;++i) {
+            const unsigned index=(head_+i)%kCapacity;
+            if(packets_[index].cable()!=cable) continue;
+            out=packets_[index];
+            for(unsigned j=i;j+1<count_;++j)
+                packets_[(head_+j)%kCapacity]=
+                    packets_[(head_+j+1u)%kCapacity];
+            tail_=(tail_+kCapacity-1u)%kCapacity;
+            --count_;
+            return true;
+        }
+        return false;
+    }
     bool pop(UsbMidiOutEvent& out) {
         if(!count_) return false;
         out=packets_[head_];

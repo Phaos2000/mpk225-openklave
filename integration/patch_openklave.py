@@ -59,10 +59,10 @@ void UpdateSmartChordDisplay(){
     const uint32_t dinMask=__get_PRIMASK();
     __disable_irq();
     mpk225::UsbMidiOutEvent pending{};
-    if (Mpk225NativeUsb.peekHostMidi(pending) &&
+    if (Mpk225NativeUsb.peekHostMidiCable(MPK225_DIN_USB_CABLE,pending) &&
         Mpk225NativeDin.enqueue(pending,MPK225_DIN_USB_CABLE)) {
       mpk225::UsbMidiOutEvent accepted{};
-      (void)Mpk225NativeUsb.popHostMidi(accepted);
+      (void)Mpk225NativeUsb.popHostMidiCable(MPK225_DIN_USB_CABLE,accepted);
     }
     __set_PRIMASK(dinMask);
     Mpk225NativeDin.serviceTx();

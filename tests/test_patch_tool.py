@@ -109,6 +109,8 @@ burn:
     assert 'Mpk225NativeDinRx.takeBulkFrame()' in k
     assert 'Mpk225NativeDin.init(MPK225_DIN_TX_LAB != 0, MPK225_DIN_RX_LAB != 0);' in k
     assert 'Mpk225NativeDin.enqueue(pending,MPK225_DIN_USB_CABLE)' in k
+    assert 'Mpk225NativeUsb.peekHostMidiCable(MPK225_DIN_USB_CABLE,pending)' in k
+    assert 'Mpk225NativeUsb.popHostMidiCable(MPK225_DIN_USB_CABLE,accepted)' in k
     assert (out/'src/Mpk225UsbMidiCables.h').is_file()
     assert (out/'src/Mpk225UsbDeviceState.h').is_file()
     assert (out/'src/Mpk225UsbControl.h').is_file()
