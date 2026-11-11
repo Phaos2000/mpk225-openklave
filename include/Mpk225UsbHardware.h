@@ -18,6 +18,11 @@ public:
     static constexpr uint16_t kPmaEp0Rx=0x40, kPmaEp0Tx=0x48;
     static constexpr uint16_t kPmaEp1Rx=0x50, kPmaEp2Tx=0x90;
     static constexpr uint16_t kPmaEp3Tx=0xD0;
+    // STM32F1 USB COUNT_RX encodes 32-byte block count in bits 14:10
+    // when BLSIZE (bit 15) is set. 0x8400=32B; 0x8800=64B.
+    static constexpr uint16_t kPmaRx64Count=0x8800;
+    static_assert(((kPmaRx64Count>>10u)&31u)*32u==64u,
+                  "EP1 OUT must allocate a real 64-byte PMA receive buffer");
     static_assert(kPmaEp3Tx+8<=0x200,"PMA exceeds STM32 FS 512-byte allocation");
     bool configured() const { return control_.configured(); }
     bool readyForMidiIn() const {
@@ -74,7 +79,7 @@ public:
         btWrite(1,0,0);
         btWrite(1,1,0);
         btWrite(1,2,kPmaEp1Rx);
-        btWrite(1,3,0x8400); // 64-byte EP1 bulk OUT (2x 32-byte blocks)
+        btWrite(1,3,kPmaRx64Count); // 64-byte EP1 bulk OUT, two 32-byte blocks
         btWrite(2,0,kPmaEp2Tx);
         btWrite(2,1,0);
         btWrite(2,2,0);
