@@ -28,3 +28,11 @@ DIN IN experimental software now links on the Cortex-M3: PA10 USART1 RX poll, MI
 **Offline gate progress (2026-11-11):** RX-only USART1 no longer configures PA9 as an output or sets TX enable; the 31,250-baud divider is corrected for the upstream 48 MHz PLL; four-cable DIN-serial→USB→DIN roundtrip and full-queue retry tests added; undefined serial status bytes are rejected. The generated integration explicitly rejects DIN lab builds without FACTORY_SCAN=1. Physical tests and verified recovery remain strictly blocked.
 
 **ELF flash-load gate:** CI now validates ELF32 PT_LOAD program headers and maps every allocated initialized section back to its flash load address. This additionally rejects `.data` initializers whose LMA overlaps bootloader, boot token, or preset flash—even if their virtual address correctly lies in SRAM. Guarded offline ELF only; not proof of successful hardware boot/recovery.
+
+## Additional offline closure — 2026-11-11
+
+- **HID SET_IDLE correction:** 1 ms USB SOF clock (STM32F103 RM0008) enforces a 4 ms multiplier before repeating an unchanged report, while zero idle remains strictly change-only. This avoids continuous duplicate HID reports.
+- **Class controls:** HID SET_IDLE/GET_IDLE/GET_REPORT/SET_REPORT are now rejected until the device configuration is active; descriptor reads during enumeration remain permitted.
+- **Physical DIN TX validation:** malformed USB-MIDI CIN status/data combinations are rejected. Valid CIN 0xF raw one-byte events are supported, as USB MIDI 1.0 allows. The source event is not ACKed if its physical destination rejects it.
+- **Four-cable queue independence:** only the explicitly bound DIN USB cable is dequeued; packets addressed to the other three factory-advertised cables remain queued, in order, awaiting validated destinations. The shared FIFO still NAKs on saturation rather than silently dropping unmatched traffic.
+- **Acceptance boundary:** code and offline tests are not proof that the physical MIDI-to-USB cable mapping, LCD/encoder GPIO, bootloader recovery, or real-time timing work on the user's MPK225. No flashing or firmware packaging is enabled.

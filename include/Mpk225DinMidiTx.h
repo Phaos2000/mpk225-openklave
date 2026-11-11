@@ -44,7 +44,7 @@ public:
     // Validate USB MIDI 1.0 CIN framing before sending bytes to a physical
     // serial port. CIN=F is explicitly allowed to carry *unparsed single*
     // bytes, so do NOT require it to be a realtime status.
-    static constexpr bool validEvent(const UsbMidiOutEvent& ev) {
+    static bool validEvent(const UsbMidiOutEvent& ev) {
         const unsigned cin=ev.cin();
         const uint8_t a=ev.data[1],b=ev.data[2],c=ev.data[3];
         switch(cin) {
