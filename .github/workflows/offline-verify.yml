@@ -33,6 +33,8 @@ jobs:
           /tmp/test_reset_smart
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 tests/test_mpk225_full_path.cpp -o /tmp/test_mpk225_full_smart
           /tmp/test_mpk225_full_smart
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 -DMPK225_CANDIDATE_PANEL_BUTTONS=1 tests/test_panel_buttons.cpp -o /tmp/test_panel_enabled
+          /tmp/test_panel_enabled
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude tools/mpk225_live_chords_win.cpp -o /tmp/mpk225_host_bridge
           /tmp/mpk225_host_bridge --selftest
       - name: Install Cortex-M3 compiler (no device access)
@@ -80,6 +82,13 @@ jobs:
           arm-none-eabi-size /tmp/led-mpk225-smart-not-installable.elf
           arm-none-eabi-nm /tmp/led-mpk225-smart-not-installable.elf | grep -Ei '^2000c000 [Aa] _estack$'
           sha256sum /tmp/led-mpk225-smart-not-installable.elf
+          make -B -C /tmp/openklave-candidate/src led.elf CHORD_ON_BOOT=1 FACTORY_SCAN=1 SMART_ON_BOOT=1 PANEL_BUTTONS=1
+          cp /tmp/openklave-candidate/src/led.elf /tmp/led-mpk225-panel-not-installable.elf
+          if cmp -s /tmp/led-mpk225-smart-not-installable.elf /tmp/led-mpk225-panel-not-installable.elf; then
+            echo "ERROR: panel-control candidate is identical to headless smart firmware"
+            exit 1
+          fi
+          arm-none-eabi-size /tmp/led-mpk225-panel-not-installable.elf
           arm-none-eabi-objcopy --dump-section .mySegment=/tmp/mpk225-boot-signature.bin /tmp/led-mpk225-smart-not-installable.elf
           python3 -c 'from pathlib import Path; sig=Path("/tmp/mpk225-boot-signature.bin").read_bytes(); assert sig==bytes.fromhex("414434415f5269636861726400010002"), "Boot signature does not match official Akai v1.02 16-byte token"'
       - name: Verify firmware release actions remain disabled
