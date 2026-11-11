@@ -102,7 +102,7 @@ burn:
     assert 'void UpdateSmartChordDisplay(){' in k
     assert 'formatSmartChordStatus(line,' in k
     assert '#if MPK225_CANDIDATE_PANEL_BUTTONS' in k
-    assert 'UpdateSmartChordDisplay();' in main
+    assert 'UpdateSmartChordDisplay();' in (out/'src/main.c').read_text()
     assert (out/'src/Stm32UsbTxGate.h').is_file()
     # A previously idle USB endpoint must be kicked from the main loop,
     # not require a prior USB transfer. The USB interrupt only acknowledges.
