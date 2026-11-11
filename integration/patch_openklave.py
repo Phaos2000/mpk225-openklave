@@ -394,7 +394,7 @@ def main() -> int:
     shutil.copytree(base, out)
     for name, contents in files.items():
         (out / name).write_text(contents)
-    for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'OpenKlaveEventQueue.h',
+    for name in ('ChordEngine.h', 'MpkMidiPipeline.h', 'Mpk225UsbMidiCables.h', 'OpenKlaveEventQueue.h',
                  'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h',
                  'Mpk225FactoryKeybedDecoder.h', 'KeybedContactVelocity.h',
                  'EmbeddedSmartChordController.h', 'Stm32UsbTxGate.h',

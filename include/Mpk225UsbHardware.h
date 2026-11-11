@@ -7,11 +7,17 @@
 // bNumEndpoints=1 and Windows has no open pipe, so is intentionally unused.
 #include "Mpk225UsbDeviceState.h"
 #include "Mpk225UsbDescriptors.h"
+#include "Mpk225UsbMidiCables.h"
 #include <stdint.h>
 
 namespace mpk225 {
 
-struct UsbMidiOutEvent { uint8_t data[4]{}; };
+struct UsbMidiOutEvent {
+    uint8_t data[4]{};
+    uint8_t cable() const { return usbMidiCable(data[0]); }
+    uint8_t cin() const { return usbMidiCin(data[0]); }
+    bool knownCable() const { return usbMidiKnownCable(data[0]); }
+};
 
 class Mpk225UsbHardware {
 public:
@@ -60,7 +66,9 @@ public:
         return true;
     }
     bool submitMidiIn(const uint8_t* data,uint8_t length) {
-        if(!readyForMidiIn() || !data || !length || length>64 || (length&3))
+        // Reject invalid cable numbers before touching PMA or dequeueing any
+        // producer-owned bytes. Actual outgoing keyboard traffic uses Port A.
+        if(!usbMidiBulkHasKnownCables(data,length) || !readyForMidiIn())
             return false;
         pmaWrite(kPmaEp2Tx,data,length);
         btWrite(2,1,length);
@@ -273,6 +281,9 @@ private:
         uint8_t bytes[64]{};
         pmaRead(kPmaEp1Rx,bytes,length);
         for(unsigned p=0;p<length;p+=4) {
+            // The factory configuration declares only cables 0..3.
+            // Preserve all legitimate CIN values, including system/SysEx.
+            if(!usbMidiKnownCable(bytes[p])) { ++errors_; continue; }
             UsbMidiOutEvent& item=hostPackets_[hostTail_];
             for(unsigned i=0;i<4;++i) item.data[i]=bytes[p+i];
             hostTail_=(hostTail_+1u)%kHostQueueCount;

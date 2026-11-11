@@ -3,6 +3,7 @@
 // -> bounded MIDI FIFO -> standard USB-MIDI 1.0 event packets.
 // NO USB peripheral access, GPIO, flashing, SysEx, or device IO in this file.
 #include "ChordEngine.h"
+#include "Mpk225UsbMidiCables.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -56,15 +57,16 @@ private:
     size_t head_ = 0, tail_ = 0, size_ = 0;
 };
 
-// Encodes MIDI 1.0 channel-voice messages as USB-MIDI 1.0 packets.
-// Header: cable 0 (high nibble) + Code Index Number (low nibble).
-// Unrecognized/system status is rejected, not silently corrupted.
-inline bool usbMidiPacket(MidiEvent m, uint8_t packet[4]) {
-    if (m.note > 127 || m.velocity > 127) return false;
+// Encodes MIDI 1.0 channel-voice messages as USB-MIDI event packets.
+// Default remains Port A (cable 0) for the embedded keyboard engine.
+// System/SysEx require a separate framed source and are not synthesized here.
+inline bool usbMidiPacket(MidiEvent m, uint8_t packet[4],uint8_t cable=0) {
+    if (cable>=kMpk225UsbCableCount || m.note>127 || m.velocity>127)
+        return false;
     const uint8_t cin = static_cast<uint8_t>(m.status >> 4);
     if (!(cin == 0x8 || cin == 0x9 || cin == 0xA || cin == 0xB || cin == 0xE))
         return false;
-    packet[0] = cin;
+    packet[0] = static_cast<uint8_t>((cable<<4u)|cin);
     packet[1] = m.status;
     packet[2] = m.note;
     packet[3] = m.velocity;
@@ -182,13 +184,14 @@ public:
     // Real MPK225 bulk endpoint: consume at most 16 event packets (64 B).
     // The transport MUST call this only once the USB EP2 TX buffer is free.
     // Keeps legacy 8-byte API below for compatibility with existing tests.
-    UsbBulkFrame takeUsbBulkFrame() {
+    UsbBulkFrame takeUsbBulkFrame(uint8_t cable=0) {
         UsbBulkFrame out{};
+        if(cable>=kMpk225UsbCableCount) return out; // no destructive dequeue
         for (unsigned i=0;i<16;++i) {
             MidiEvent m{};
             if (!fifo_.pop(m)) break;
             uint8_t packet[4]{};
-            if (!usbMidiPacket(m, packet)) continue;
+            if (!usbMidiPacket(m, packet, cable)) continue;
             for (unsigned j=0;j<4;++j) out.bytes[out.length++]=packet[j];
         }
         return out;
@@ -196,13 +199,14 @@ public:
 
     // Drain up to TWO 4-byte event packets per 8-byte endpoint transfer.
     // Call only when device endpoint is ready. No transport timing claim.
-    UsbFrame takeUsbFrame() {
+    UsbFrame takeUsbFrame(uint8_t cable=0) {
         UsbFrame out;
+        if(cable>=kMpk225UsbCableCount) return out;
         for (unsigned i = 0; i < 2; ++i) {
             MidiEvent m{};
             if (!fifo_.pop(m)) break;
             uint8_t data[4]{};
-            if (!usbMidiPacket(m, data)) continue;
+            if (!usbMidiPacket(m, data, cable)) continue;
             for (unsigned j = 0; j < 4; ++j) out.bytes[out.length++] = data[j];
         }
         return out;

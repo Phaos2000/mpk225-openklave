@@ -99,6 +99,7 @@ burn:
     assert (out/'src/KeybedContactVelocity.h').is_file()
     assert (out/'src/EmbeddedSmartChordController.h').is_file()
     assert (out/'src/Mpk225UsbHardware.h').is_file()
+    assert (out/'src/Mpk225UsbMidiCables.h').is_file()
     assert (out/'src/Mpk225UsbDeviceState.h').is_file()
     assert (out/'src/Mpk225UsbControl.h').is_file()
     assert (out/'src/Mpk225UsbDescriptors.h').is_file()
