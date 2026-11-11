@@ -8,10 +8,12 @@
 
 - `include/ChordEngine.h`: **49 chord voicings** (triads, 6/9, 7ths, extended, altered, suspended, quartal and power chords), tracked notes and shared-note-safe releases, 1,025-byte engine.
 - `include/SmartHarmony.h`: no-heap chord compatibility and ranked suggestions over **588 root × chord possibilities**. Supports 12 tonic pitch classes and **12 scale modes** (seven diatonic modes, harmonic/melodic minor, pentatonics and chromatic). Strict in-key, borrowed and unrestricted filters; previous-chord common tones and approximate voice-motion ranking. Enumerates **all** matches or gives a bounded top-N list.
-- `include/MpkMidiPipeline.h`: legacy-event MIDI pipeline, chord mode disabled by default, FIFO pressure control, pad/CC passthrough, USB-MIDI packet formatting.
+- `include/VoicingPlanner.h`: **actual MIDI-note inversions and register selection** with bounded, ordered per-voice semitone movement. Tested Cmaj7 → Fmaj7 moves just 4 total semitones; no dynamic memory.
+- `include/MpkMidiPipeline.h`: legacy-event MIDI pipeline, chord mode disabled by default, FIFO pressure control, pad/CC passthrough, USB-MIDI packet formatting. `playPlannedVoicing()` now accepts absolute inverted notes while retaining safe physical-key note ownership.
 - `tests/test_harmony_to_midi.cpp`: suggested G7 → one keyboard note → four proper note-ons and note-offs, with chord-mode held-key protection.
+- `tests/test_voicing_planner.cpp` and `tests/test_voiced_playback.cpp`: all 588 root/type voicings fit their pitch classes, and minimal-motion Fmaj7 playback cleanly retriggers/releases 16 MIDI events.
 
-**Important musical limitation:** scale membership checks the *actual voiced pitches*, not complete theoretical chord spellings. Current ranking uses pitch-class proximity and shared tones, **not** full functional harmony, genuine voice assignments, chord substitutions or optimal inverted MIDI voicings. Those are next design/implementation work, not completed features.
+**Important musical limitation:** scale membership checks the *actual voiced pitches*, not complete theoretical chord spellings. Current ranking uses pitch-class proximity and shared tones, **not** full functional harmony, full functional chord substitutions or globally optimal multi-chord orchestration. Those are next design/implementation work, not completed features.
 
 ## Reproduce tests (Linux/macOS/MinGW with C++17 compiler)
 
