@@ -39,8 +39,10 @@ The factory configuration's HID Interface 2 sets `bNumEndpoints=1` yet USBTreeVi
 ## What was implemented
 
 - `include/Mpk225UsbDescriptors.h`: a **169-byte configuration descriptor model** and 18-byte device descriptor, with the observed composite topology, jack IDs, endpoint attributes and anomaly.
-- `include/Mpk225UsbControl.h`: allocation-free, pure **EP0 descriptor-request and 8-byte packet streaming model**, including measured strings and 63-byte keyboard report. This is not yet bound to peripheral MMIO/interrupt handling.
-- `tests/test_factory_usb_descriptors.cpp`, `tests/test_usb_control_model.cpp`: exhaustive descriptor parsing, request boundaries, HID and string descriptor handling.
+- `include/Mpk225UsbControl.h`: allocation-free **EP0 descriptor request and 8-byte packet model**, including strings and HID report.
+- `include/Mpk225UsbDeviceState.h`: EP0 enumeration state machine, including address/configuration and HID control requests.
+- `include/Mpk225UsbHardware.h`: **experimental, ARM-compiled STM32F103 composite USB MMIO driver**. In the `FACTORY_SCAN=1` candidate it is connected to the USB interrupt and MIDI foreground loop. Uses EP1 OUT / EP2 IN 64-byte bulk, EP3 IN HID interrupt; the old MPK249 transport remains only in the reference branch.
+- `tests/test_factory_usb_descriptors.cpp`, `tests/test_usb_control_model.cpp`, `tests/test_usb_device_state.cpp`, `tests/test_usb_pma_layout.cpp`: descriptor, EP0 state, PMA size/overlap tests. **EP1's COUNT_RX was corrected from 0x8400 (32 B) to 0x8800 (64 B)**; a regression test verifies the STM32 register encoding.
 
 No device communication, driver modification, update SysEx, firmware backup or flashing occurred.
 
@@ -48,7 +50,9 @@ No device communication, driver modification, update SysEx, firmware backup or f
 
 The inherited `sillsm/openklave` USB implementation is **not compatible with the observed MPK225 configuration**. It declares a MIDI-only two-interface configuration with a single jack pair, 8-byte interrupt endpoint traffic and a simple EP1 IN transmit bridge. Changing `PID` to `0023` alone cannot produce equivalent MPK225 functionality.
 
-**Before any hardware test**, the actual Cortex-M3 USB transport must be reworked to enumerate configuration **13**, correctly service AudioControl, MIDIStreaming and HID control requests, allocate the observed endpoint/PMA layout (MIDI EP1 OUT, EP2 IN, HID EP3 IN), use **64-byte bulk MIDI IN/OUT**, route four MIDI jacks/cable numbers, and handle the HID keyboard interface without corrupting legacy functionality. The HID OUT descriptor discrepancy requires special care.
+The integrated composite USB **candidate now exists and compiles/links offline**. Its enumeration state machine, buffer layout, EP0 responses and basic MIDI/HID endpoint scheduling are tested without connecting to the keyboard. **A successful ELF link is not proof of USB enumeration**: EP0 transfer timing, the actual hardware interrupt response, endpoints' DMA/PMA behavior, and compatibility with the MPK225's HID buttons remain untested on the device.
+
+The four cable/jack descriptors are preserved, but **four-port MIDI routing is not complete**: incoming host USB-MIDI packets have a queue, while physical MIDI DIN/OUT and Remote routing are not yet bound to verified MPK225 peripheral paths. Similarly, HID report production exists but factory button-to-HID mapping is not verified. Do not claim hardware compatibility or factory feature parity. The HID OUT descriptor discrepancy requires special care.
 
 Firmware bootloader readback, recovery, MPK225 USB enumeration under the candidate, and real keybed timing remain **unverified**. All candidate flashing remains disabled.
 
