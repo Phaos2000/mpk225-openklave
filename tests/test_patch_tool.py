@@ -49,6 +49,7 @@ constexpr PMAAllocation mouseTry = fixture();
 constexpr PMAAllocation mouseHID = fixture();
 constexpr PMAAllocation USBMidi  = fixture();
 GlobalEventStack->capacity = 100;
+    USARTSetup(); // upstream start-up anchor, present in the full firmware
 int start(){
     while(1){
 
