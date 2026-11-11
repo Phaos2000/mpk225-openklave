@@ -15,7 +15,13 @@ struct LegacyEvent {
 };
 
 struct UsbFrame {
-    uint8_t bytes[8]{};  // upstream USB endpoint advertises 8-byte max packet
+    uint8_t bytes[8]{};  // Legacy/OpenKlave reference 8-byte grouping
+    uint8_t length = 0;
+};
+// Factory MPK225 MIDI endpoint 0x82 is bulk IN, max packet 64 bytes,
+// up to 16 standard USB-MIDI four-byte event packets per transfer.
+struct UsbBulkFrame {
+    uint8_t bytes[64]{};
     uint8_t length = 0;
 };
 
@@ -171,6 +177,21 @@ public:
                 static_cast<uint8_t>(e.value > 127 ? 127 : e.value)});
         }
         return true;
+    }
+
+    // Real MPK225 bulk endpoint: consume at most 16 event packets (64 B).
+    // The transport MUST call this only once the USB EP2 TX buffer is free.
+    // Keeps legacy 8-byte API below for compatibility with existing tests.
+    UsbBulkFrame takeUsbBulkFrame() {
+        UsbBulkFrame out{};
+        for (unsigned i=0;i<16;++i) {
+            MidiEvent m{};
+            if (!fifo_.pop(m)) break;
+            uint8_t packet[4]{};
+            if (!usbMidiPacket(m, packet)) continue;
+            for (unsigned j=0;j<4;++j) out.bytes[out.length++]=packet[j];
+        }
+        return out;
     }
 
     // Drain up to TWO 4-byte event packets per 8-byte endpoint transfer.
