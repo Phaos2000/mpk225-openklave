@@ -34,9 +34,6 @@ def block_replace(text: str, before: str, after: str, new: str, label: str) -> s
 
 
 BRIDGE = r'''static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};
-#if MPK225_FACTORY_KEYBED
-static mpk225::Mpk225UsbHardware Mpk225NativeUsb{};
-#endif
 
 // A USB reset invalidates every queued packet and held note on the old bus.
 // The reset interrupt calls this while foreground MIDI servicing is paused.
@@ -136,7 +133,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\n#include "Mpk225UsbHardware.h"\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\n#include "Mpk225UsbHardware.h"\n#if MPK225_FACTORY_KEYBED\nstatic mpk225::Mpk225UsbHardware Mpk225NativeUsb{};\n#endif\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
