@@ -53,6 +53,14 @@ public:
     }
     uint32_t errorCount() const { return errors_; }
     unsigned queuedHostMidi() const { return hostCount_; }
+    // When EP1 has an already-ACKed USB OUT packet held in PMA, restore
+    // RX VALID as soon as that *specific* packet fits. Requiring 16 slots
+    // for a short transfer can unnecessarily hold a note-off under NAK.
+    static constexpr bool pendingHostMidiFits(unsigned queued,
+                                               unsigned packetBytes) {
+        return packetBytes<=64 && (packetBytes&3u)==0 &&
+               queued<=64 && 64u-queued>=packetBytes/4u;
+    }
     // Incoming from host, four USB-MIDI bytes incl cable/CIN nibble.
     bool popHostMidi(UsbMidiOutEvent& out) {
         if(!hostCount_) return false;
@@ -61,7 +69,7 @@ public:
         --hostCount_;
         // When the endpoint was NAK due to queue pressure, process PMA
         // only once room for all 16 event packets is available.
-        if(ep1Pending_ && kHostQueueCount-hostCount_>=16u)
+        if(ep1Pending_ && pendingHostMidiFits(hostCount_,bt(1,3)&0x3FFu))
             serviceRxPending();
         return true;
     }
@@ -259,7 +267,7 @@ private:
             return;
         }
         // Do not overwrite PMA if the host temporarily outruns our FIFO.
-        if(kHostQueueCount-hostCount_<length/4u){
+        if(!pendingHostMidiFits(hostCount_,length)){
             ep1Pending_=true;
             setEndpoint(1,2,0); // NAK until there is room
             return;
@@ -270,8 +278,7 @@ private:
     void serviceRxPending() {
         if(!ep1Pending_) return;
         const unsigned length=bt(1,3)&0x3FFu;
-        if(length<=64 && !(length&3u) &&
-           kHostQueueCount-hostCount_ >= length/4u)
+        if(pendingHostMidiFits(hostCount_,length))
             copyHostMidiFromPma(length);
         else ++errors_;
         ep1Pending_=false;
