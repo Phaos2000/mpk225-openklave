@@ -178,7 +178,14 @@ private:
     ChordEngine chords_{};
     FixedMidiQueue<kQueueSize> fifo_{};
     bool passthroughHeld_[128]{};
-    bool chordMode_ = false; // factory-style notes by default, opt-in chord mode
+#if defined(MPK225_CANDIDATE_CHORD_ON_BOOT)
+    static_assert(MPK225_CANDIDATE_CHORD_ON_BOOT == 0 ||
+                  MPK225_CANDIDATE_CHORD_ON_BOOT == 1,
+                  "MPK225_CANDIDATE_CHORD_ON_BOOT must be 0 or 1");
+    bool chordMode_ = MPK225_CANDIDATE_CHORD_ON_BOOT != 0;
+#else
+    bool chordMode_ = false; // default factory-style passthrough
+#endif
 };
 
 } // namespace mpk225
