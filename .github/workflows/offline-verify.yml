@@ -31,6 +31,8 @@ jobs:
           /tmp/test_smart_embedded
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 tests/test_transport_reset.cpp -o /tmp/test_reset_smart
           /tmp/test_reset_smart
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 tests/test_mpk225_full_path.cpp -o /tmp/test_mpk225_full_smart
+          /tmp/test_mpk225_full_smart
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude tools/mpk225_live_chords_win.cpp -o /tmp/mpk225_host_bridge
           /tmp/mpk225_host_bridge --selftest
       - name: Install Cortex-M3 compiler (no device access)
