@@ -38,14 +38,14 @@ public:
     void clear() { report_=HidKeyboardReport{}; }
 
     // HID keyboard usages 0xE0..0xE7 map to eight modifier bits.
-    // Nonmodifier usages 0x01..0x65 are supported by this descriptor.
+    // Nonmodifier usages 0x04..0x65 are supported; 0x01..0x03 are HID errors.
     // Ignore invalid/overflow key presses without changing held state.
     bool press(uint8_t usage) {
         if (usage>=0xE0 && usage<=0xE7) {
             report_.modifiers|=static_cast<uint8_t>(1u<<(usage-0xE0));
             return true;
         }
-        if (usage<0x01 || usage>0x65) return false;
+        if (usage<0x04 || usage>0x65) return false;
         for (uint8_t key:report_.keys) if (key==usage) return true;
         for (uint8_t& key:report_.keys)
             if (!key) { key=usage; return true; }
