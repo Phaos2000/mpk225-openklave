@@ -29,7 +29,8 @@ constexpr PMAAllocation USBMidi  = fixture();
 GlobalEventStack->capacity = 100;
 ''')
     (base/'src/stm32_flash.ld').write_text('FLASH (rx): ORIGIN = 0x08006000, LENGTH = 256k')
-    (base/'src/Makefile').write_text('''CFLAGS += -I.
+    (base/'src/Makefile').write_text('''CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER
+CFLAGS += -I.
 led.elf:
 	$(CC) $(CFLAGS) $^ -o $@
 all: $(PROJECT).elf MakeAkaiSysex test.elf
@@ -61,6 +62,8 @@ burn:
     assert 'extern "C" void _init(void) {}' in k
     for n in ('deviceDescriptor', 'mouseTry', 'mouseHID', 'USBMidi'):
         assert 'static constexpr PMAAllocation ' + n in k
+    assert 'CHORD_ON_BOOT ?= 0' in mk
+    assert '-DMPK225_CANDIDATE_CHORD_ON_BOOT=$(CHORD_ON_BOOT)' in mk
     assert '-nostartfiles -nodefaultlibs' in mk
     assert '-Wl,--start-group -lc -lgcc -lnosys -Wl,--end-group' in mk
     assert 'GlobalEventStack->scratch_3 = 0;' in k
