@@ -1,0 +1,50 @@
+name: MPK225 offline build and tests
+on:
+  push:
+    branches:
+      - development/v0.2-chord-pipeline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-and-arm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 18
+    steps:
+      - name: Checkout custom-firmware source
+        uses: actions/checkout@v4
+      - name: Build and run all host-side MIDI/harmony tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in tests/test_*.cpp; do
+            test="${f##*/}"
+            g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude "$f" -o "/tmp/${test%.cpp}"
+            "/tmp/${test%.cpp}"
+          done
+          python3 tests/test_patch_tool.py
+      - name: Install Cortex-M3 compiler (no device access)
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi
+      - name: Compile freestanding harmony/MIDI for ARM
+        run: |
+          arm-none-eabi-g++ -std=c++17 -O2 -Wall -Wextra -mcpu=cortex-m3 -mthumb -ffreestanding -fno-exceptions -fno-rtti -Iinclude -c tests/arm_smart.cpp -o /tmp/arm_smart.o
+          arm-none-eabi-size /tmp/arm_smart.o
+      - name: Prepare independent OpenKlave reference (pinned October 2021)
+        run: |
+          git clone --quiet https://github.com/sillsm/openklave.git /tmp/openklave
+          git -C /tmp/openklave checkout --quiet 44a10eae127e5f77b73967d43e1d4d73c5fbf6f4
+          python3 integration/patch_openklave.py --upstream /tmp/openklave --output /tmp/openklave-candidate
+      - name: Attempt full ELF build of guarded candidate (NO flashing)
+        run: |
+          make -C /tmp/openklave-candidate/src led.elf
+          arm-none-eabi-size /tmp/openklave-candidate/src/led.elf
+          arm-none-eabi-objdump -h /tmp/openklave-candidate/src/led.elf
+      - name: Verify firmware release actions remain disabled
+        run: |
+          ! grep -q 'python ../util/wipe_os.py' /tmp/openklave-candidate/src/Makefile
+          ! grep -q 'python ../util/flash_os.py' /tmp/openklave-candidate/src/Makefile
+          grep -q 'Disabled: MPK225 recovery not verified' /tmp/openklave-candidate/src/Makefile
