@@ -83,7 +83,7 @@ def patch_kernel(src: str) -> str:
 
 def patch_linker(src: str) -> str:
     return one_replace(src, 'ORIGIN = 0x08006000, LENGTH = 256k',
-        'ORIGIN = 0x08006000, LENGTH = 0x3A000', '256-KB physical flash boundary')
+        'ORIGIN = 0x08006000, LENGTH = 0x2E000', '184-KiB application-only flash boundary')
 
 
 def patch_makefile(src: str) -> str:
