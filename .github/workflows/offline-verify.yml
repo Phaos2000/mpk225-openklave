@@ -110,9 +110,15 @@ jobs:
             exit 1
           fi
           arm-none-eabi-size /tmp/led-mpk225-panel-not-installable.elf
+          make -B -C /tmp/openklave-candidate/src led.elf CHORD_ON_BOOT=1 FACTORY_SCAN=1 SMART_ON_BOOT=1 PANEL_BUTTONS=1 DIN_TX_LAB=1 DIN_USB_CABLE=2
+          cp /tmp/openklave-candidate/src/led.elf /tmp/led-mpk225-din-lab-not-installable.elf
+          if cmp -s /tmp/led-mpk225-panel-not-installable.elf /tmp/led-mpk225-din-lab-not-installable.elf; then
+            echo "ERROR: guarded DIN lab build did not alter ARM code"
+            exit 1
+          fi
           arm-none-eabi-objcopy --dump-section .mySegment=/tmp/mpk225-boot-signature.bin /tmp/led-mpk225-smart-not-installable.elf
           python3 -c 'from pathlib import Path; sig=Path("/tmp/mpk225-boot-signature.bin").read_bytes(); assert sig==bytes.fromhex("414434415f5269636861726400010002"), "Boot signature does not match official Akai v1.02 16-byte token"'
-          python3 tools/check_candidate_elf.py /tmp/led-passthrough-not-installable.elf /tmp/led-chord-on-boot-not-installable.elf /tmp/led-mpk225-model1-not-installable.elf /tmp/led-mpk225-smart-not-installable.elf /tmp/led-mpk225-panel-not-installable.elf
+          python3 tools/check_candidate_elf.py /tmp/led-passthrough-not-installable.elf /tmp/led-chord-on-boot-not-installable.elf /tmp/led-mpk225-model1-not-installable.elf /tmp/led-mpk225-smart-not-installable.elf /tmp/led-mpk225-panel-not-installable.elf /tmp/led-mpk225-din-lab-not-installable.elf
       - name: Verify firmware release actions remain disabled
         run: |
           ! grep -q 'python ../util/wipe_os.py' /tmp/openklave-candidate/src/Makefile

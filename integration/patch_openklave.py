@@ -46,6 +46,22 @@ void ResetMidiForUsbBus(){
 // For opt-in panel/LCD lab builds only. The inherited MPK249 LCD bus
 // remains unverified on the MPK225. Never update on each note or USB ISR.
 void UpdateSmartChordDisplay(){
+#if MPK225_FACTORY_KEYBED && MPK225_DIN_TX_LAB
+  // Opt-in, schematic-backed PA9 USART1. USB cable is deliberately supplied
+  // by the lab build, not inferred from a port's display name.
+  if (Mpk225NativeDin.ready()) {
+    const uint32_t dinMask=__get_PRIMASK();
+    __disable_irq();
+    mpk225::UsbMidiOutEvent pending{};
+    if (Mpk225NativeUsb.peekHostMidi(pending) &&
+        Mpk225NativeDin.enqueue(pending,MPK225_DIN_USB_CABLE)) {
+      mpk225::UsbMidiOutEvent accepted{};
+      (void)Mpk225NativeUsb.popHostMidi(accepted);
+    }
+    __set_PRIMASK(dinMask);
+    Mpk225NativeDin.serviceTx();
+  }
+#endif
 #if MPK225_FACTORY_KEYBED
   // The USB reset/endpoint ISR can preempt this foreground PMA write.
   // Preserve the prior IRQ mask; MIDI IN already uses the same discipline.
@@ -138,7 +154,7 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\n#include "Mpk225UsbHardware.h"\n#if MPK225_FACTORY_KEYBED\nstatic mpk225::Mpk225UsbHardware Mpk225NativeUsb{};\n#endif\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\n#include "Mpk225UsbHardware.h"\n#include "Mpk225DinMidiTx.h"\n#if MPK225_FACTORY_KEYBED\nstatic mpk225::Mpk225UsbHardware Mpk225NativeUsb{};\n#if MPK225_DIN_TX_LAB\nstatic_assert(MPK225_DIN_USB_CABLE < 4, "Explicit USB DIN cable required");\nstatic mpk225::Mpk225DinUart1 Mpk225NativeDin{};\n#endif\n#endif\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -282,6 +298,15 @@ static_assert((NewDeviceConfiguration(dev_descriptor).a[4] & 0xFFFFu) == 0x09E8u
     src = one_replace(src, 'constexpr PMAAllocation USBMidi  =',
                       'static constexpr PMAAllocation USBMidi  =',
                       'USB descriptor lifetime: USBMidi')
+    # Model-1 opt-in DIN output is initialized only after system clocks,
+    # keypad USART3 and AFIO are ready. It must never touch production
+    # USB/serial hardware in the default firmware candidate.
+    src = one_replace(src, '    USARTSetup();',
+        '    USARTSetup();\n'
+        '#if MPK225_FACTORY_KEYBED && MPK225_DIN_TX_LAB\n'
+        '    (void)Mpk225NativeDin.init();\n'
+        '#endif',
+        'opt-in schematic-backed USART1 DIN TX initialization')
     src = one_replace(src, 'GlobalEventStack->capacity = 100;',
         'GlobalEventStack->capacity = 100;\n    GlobalEventStack->scratch_2 = 0;\n    GlobalEventStack->scratch_3 = 0;',
         'FIFO head/tail init')
@@ -352,6 +377,13 @@ def patch_makefile(src: str) -> str:
                       'PANEL_BUTTONS ?= 0\n'
                       'CFLAGS += -DMPK225_CANDIDATE_PANEL_BUTTONS=$(PANEL_BUTTONS)\n',
                       'select experimental physical panel control binding')
+    src = one_replace(src, 'PANEL_BUTTONS ?= 0\n',
+        'PANEL_BUTTONS ?= 0\n'
+        'DIN_TX_LAB ?= 0\n'
+        'DIN_USB_CABLE ?= 255\n'
+        'CFLAGS += -DMPK225_DIN_TX_LAB=$(DIN_TX_LAB)\n'
+        'CFLAGS += -DMPK225_DIN_USB_CABLE=$(DIN_USB_CABLE)\n',
+        'explicit opt-in physical DIN TX cable')
     # Use the freestanding Cortex-M3 ABI without libstdc++: the candidate
     # makes no exception, RTTI, thread-safe-static, or C++ library calls.
     # Explicit C runtime link avoids multi-gigabyte target C++ package.
@@ -405,7 +437,8 @@ def main() -> int:
                  'EmbeddedSmartChordController.h', 'Stm32UsbTxGate.h',
                  'SmartChordDisplay.h', 'Mpk225UsbDescriptors.h',
                  'Mpk225HidKeyboard.h', 'Mpk225UsbControl.h',
-                 'Mpk225UsbDeviceState.h', 'Mpk225HostMidiQueue.h', 'Mpk225UsbHardware.h'):
+                 'Mpk225UsbDeviceState.h', 'Mpk225HostMidiQueue.h', 'Mpk225UsbHardware.h',
+                 'Mpk225DinMidiTx.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK225 timing/velocity curve and USB IRQ still need hardware validation; recovery NOT verified.')

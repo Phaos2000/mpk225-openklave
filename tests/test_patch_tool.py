@@ -100,6 +100,9 @@ burn:
     assert (out/'src/EmbeddedSmartChordController.h').is_file()
     assert (out/'src/Mpk225UsbHardware.h').is_file()
     assert (out/'src/Mpk225HostMidiQueue.h').is_file()
+    assert (out/'src/Mpk225DinMidiTx.h').is_file()
+    assert 'Mpk225NativeDin.init();' in k
+    assert 'Mpk225NativeDin.enqueue(pending,MPK225_DIN_USB_CABLE)' in k
     assert (out/'src/Mpk225UsbMidiCables.h').is_file()
     assert (out/'src/Mpk225UsbDeviceState.h').is_file()
     assert (out/'src/Mpk225UsbControl.h').is_file()
@@ -183,6 +186,8 @@ burn:
     assert 'FACTORY_SCAN ?= 0' in mk
     assert 'SMART_ON_BOOT ?= 0' in mk
     assert 'PANEL_BUTTONS ?= 0' in mk
+    assert 'DIN_TX_LAB ?= 0' in mk
+    assert 'DIN_USB_CABLE ?= 255' in mk
     assert '-DMPK225_CANDIDATE_PANEL_BUTTONS=$(PANEL_BUTTONS)' in mk
     assert '-DMPK225_CANDIDATE_SMART_ON_BOOT=$(SMART_ON_BOOT)' in mk
     assert '-DMPK225_FACTORY_KEYBED=$(FACTORY_SCAN)' in mk
