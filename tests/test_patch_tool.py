@@ -36,7 +36,11 @@ burn:
     assert 'GlobalEventStack->scratch_3 = 0;' in k
     assert 'MakeAkaiSysex test.elf' not in mk
     assert 'Disabled: MPK225 recovery not verified' in mk
-    assert '0x3A000' in (out/'src/stm32_flash.ld').read_text()
+    ld = (out/'src/stm32_flash.ld').read_text()
+    assert 'ORIGIN = 0x08006000, LENGTH = 0x2E000' in ld
+    assert '0x3A000' not in ld, 'Cannot include persistent preset region'
+    assert 0x08006000 + 0x2E000 == 0x08034000
+    assert 0x08033800 < 0x08034000, 'Boot signature must remain in app partition'
     assert 'struct Event{' in (base/'src/kernel.c').read_text()
     assert not (base/'src'/'ChordEngine.h').exists()
     proc2=run([sys.executable,str(ROOT/'integration/patch_openklave.py'), '--upstream',str(base),'--output',str(out)],capture_output=True,text=True)
