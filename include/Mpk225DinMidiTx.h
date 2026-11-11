@@ -94,7 +94,7 @@ public:
     static constexpr bool matchesClock(uint32_t cfgr) {
         return (cfgr & kClockMask)==(0x0051440Au & kClockMask);
     }
-    static_assert(matchesClock(0x0051440Au),"match pinned OpenKlave clock");
+
     bool ready() const { return ready_; }
     uint32_t receiveErrors() const { return receiveErrors_; }
     // PA9 stays in its original GPIO state in RX-only lab configurations.
@@ -175,4 +175,6 @@ private:
     bool ready_=false,transmitting_=false,receiving_=false;
     bool hasTransmitted_=false;
 };
+static_assert(Mpk225DinUart1::matchesClock(0x0051440Au),
+              "match pinned OpenKlave clock");
 } // namespace mpk225
