@@ -101,6 +101,12 @@ burn:
     assert 'usbEpCtrAcknowledgeWrite(old)' in usb_handler
     assert 'void ResetMidiForUsbBus(){' in k
     assert 'OpenKlaveMidiBridge.resetForUsbBus();' in k
+    assert 'resetEventQueue(GlobalEventStack);' in k
+    assert 'gEventQueueNeedsPanic = 0;' in k
+    assert 'if (takeEventQueuePanic())' in k
+    assert 'OpenKlaveMidiBridge.panicForEventLoss();' in k
+    assert k.index('if (takeEventQueuePanic())') < k.index('for (int i = 0; i < 8 && !IsEventStackEmpty')
+    assert 'GlobalEventStack->scratch_2 = 0;' not in k[k.index('void ResetMidiForUsbBus(){'):k.index('void ConsumeNoteEventStackAndTransmitNotesOverUSB(){')]
     reset_section=k[k.index('void usbReset(void){'):k.index('void writeNumberToScreen')]
     assert 'ResetMidiForUsbBus();' in reset_section
     assert 'GlobalEventStack->scratch_2 = 0;' in k
