@@ -15,6 +15,17 @@ struct UsbMidiOutEvent { uint8_t data[4]{}; };
 
 class Mpk225UsbHardware {
 public:
+    // EPnR STAT bits toggle on write-one, while CTR_RX/CTR_TX clear on
+    // write-zero. Keep pending transfer flags when changing RX/TX status;
+    // only explicit ackEndpoint() may acknowledge those transfers.
+    // Pure calculation: host tests can exercise it without touching MMIO.
+    static constexpr uint16_t endpointStatusWrite(uint16_t old,
+                                                    unsigned rx,unsigned tx) {
+        return static_cast<uint16_t>(
+            (old&0x070Fu) |
+            ((old^static_cast<uint16_t>((rx<<12u)|(tx<<4u)))&0x3030u) |
+            (old&0x8080u));
+    }
     static constexpr uint16_t kPmaEp0Rx=0x40, kPmaEp0Tx=0x48;
     static constexpr uint16_t kPmaEp1Rx=0x50, kPmaEp2Tx=0x90;
     static constexpr uint16_t kPmaEp3Tx=0xD0;
@@ -165,10 +176,7 @@ private:
     }
     static void setEndpoint(unsigned number,unsigned rx,unsigned tx) {
         const uint16_t old=ep(number);
-        ep(number)=static_cast<uint16_t>(
-            (old&0x070Fu) |
-            ((old^static_cast<uint16_t>((rx<<12u)|(tx<<4u)))&0x3030u) |
-            (old&0x8080u));
+        ep(number)=endpointStatusWrite(old,rx,tx);
     }
     static void ackEndpoint(unsigned number,bool ackRx,bool ackTx) {
         const uint16_t old=ep(number);
