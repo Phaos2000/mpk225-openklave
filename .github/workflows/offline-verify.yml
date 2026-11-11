@@ -54,8 +54,8 @@ jobs:
           printf '#pragma once\n' > /tmp/mpk225-empty-libc-headers/stdio.h
           printf '#pragma once\n' > /tmp/mpk225-empty-libc-headers/stdlib.h
           cd /tmp/openklave-clang-candidate/src
-          clang++ --target=armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -fno-threadsafe-statics -DMPK225_FACTORY_KEYBED=1 -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 -DMPK225_CANDIDATE_PANEL_BUTTONS=1 -I. -Ithird_party -I/tmp/mpk225-empty-libc-headers -c kernel.c -o /tmp/mpk225-generated-kernel.o
-          clang++ --target=armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -fno-threadsafe-statics -I. -Ithird_party -I/tmp/mpk225-empty-libc-headers -c main.c -o /tmp/mpk225-generated-main.o
+          clang++ --target=armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -fno-threadsafe-statics -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER -DMPK225_FACTORY_KEYBED=1 -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 -DMPK225_CANDIDATE_PANEL_BUTTONS=1 -I. -Ithird_party -I/tmp/mpk225-empty-libc-headers -c kernel.c -o /tmp/mpk225-generated-kernel.o
+          clang++ --target=armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -O2 -ffreestanding -fno-exceptions -fno-rtti -fno-threadsafe-statics -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER -I. -Ithird_party -I/tmp/mpk225-empty-libc-headers -c main.c -o /tmp/mpk225-generated-main.o
           file /tmp/mpk225-generated-kernel.o /tmp/mpk225-generated-main.o
       - name: Install Cortex-M3 compiler (no device access)
         run: |
