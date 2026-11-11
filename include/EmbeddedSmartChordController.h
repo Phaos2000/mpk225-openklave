@@ -98,6 +98,7 @@ public:
     unsigned fallbackCount() const { return fallbacks_; }
     size_t queuedMessages() const { return pipeline_.queuedMessages(); }
     UsbFrame takeUsbFrame() { return pipeline_.takeUsbFrame(); }
+    UsbBulkFrame takeUsbBulkFrame() { return pipeline_.takeUsbBulkFrame(); }
 
     // A pure, finite, bounded operation in the keybed event path.
     // Input event is *already* decoded to a valid MIDI pitch by the
