@@ -64,5 +64,21 @@ int main() {
 #endif
     c.resetForUsbBus();
     assert(c.queuedMessages()==0);
+    // Queue overflow recovery: no old notes can survive; send both GM
+    // panic controllers once the USB output is writable again.
+    assert(c.consume({0xFF,95,60,0}));
+    c.panicForEventLoss();
+    assert(c.queuedMessages()==2);
+    auto panic = c.takeUsbFrame();
+    assert(panic.length==8 && panic.bytes[0]==0x0B &&
+           panic.bytes[1]==0xB0 && panic.bytes[2]==120 && panic.bytes[3]==0 &&
+           panic.bytes[4]==0x0B && panic.bytes[5]==0xB0 &&
+           panic.bytes[6]==123 && panic.bytes[7]==0);
+    assert(c.queuedMessages()==0);
+    assert(c.consume({0xFE,0,60,0}));
+    assert(c.queuedMessages()==0);
+    assert(c.consume({0xFF,89,60,0}));
+    assert(c.queuedMessages()>=1);
+    c.resetForUsbBus();
     std::puts("PASS: USB reset discards old pending MIDI and held notes; preserves chord mode/type and resumes cleanly");
 }
