@@ -83,18 +83,18 @@ static int selfTest() {
     if (messages.size()!=4) return 1;
     if (((messages[3]>>8)&0x7F)!=71) return 2;
     router.consume(pack(0x90,64,90),send); // E G# B D#, B/E shared
-    if (messages.size()!=7) return 3; // 3 new, 1 shared
+    if (messages.size()!=6) return 3; // 2 new, 2 shared (E and B)
     router.consume(pack(0x80,60,0),send); // C and G release; E/B shared
-    if (messages.size()!=9) return 4;
+    if (messages.size()!=8) return 4;
     router.consume(pack(0x90,64,0),send); // note-on velocity 0 = off
-    if (messages.size()!=13) return 5;
+    if (messages.size()!=12) return 5;
     router.consume(pack(0xB0,1,72),send); // modwheel passthrough
     if (messages.back()!=pack(0xB0,1,72)) return 6;
     router.consume(pack(0xF0,0,0),send); // outgoing system/SysEx forbidden
-    if (messages.size()!=14) return 7;
+    if (messages.size()!=13) return 7;
     router.consume(pack(0x90,60,70),send);
     router.stop(send);                    // all released safely
-    if (messages.size()!=22) return 8;   // 4 more on + 4 off
+    if (messages.size()!=21) return 8;   // 4 more on + 4 off
     for (unsigned n=0;n<128;++n)
         if (router.engine.noteReferences(static_cast<uint8_t>(n))) return 9;
     std::printf("PASS: live host MIDI routing, 49-chord engine, overlapping notes, all-offs\n");
