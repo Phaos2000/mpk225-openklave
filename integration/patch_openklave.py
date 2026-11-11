@@ -34,6 +34,9 @@ def block_replace(text: str, before: str, after: str, new: str, label: str) -> s
 
 
 BRIDGE = r'''static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};
+#if MPK225_FACTORY_KEYBED
+static mpk225::Mpk225UsbHardware Mpk225NativeUsb{};
+#endif
 
 // A USB reset invalidates every queued packet and held note on the old bus.
 // The reset interrupt calls this while foreground MIDI servicing is paused.
@@ -46,6 +49,9 @@ void ResetMidiForUsbBus(){
 // For opt-in panel/LCD lab builds only. The inherited MPK249 LCD bus
 // remains unverified on the MPK225. Never update on each note or USB ISR.
 void UpdateSmartChordDisplay(){
+#if MPK225_FACTORY_KEYBED
+  (void)Mpk225NativeUsb.submitHidIn();
+#endif
 #if MPK225_CANDIDATE_PANEL_BUTTONS
   static bool first = true;
   if (!first && !OpenKlaveMidiBridge.panelDirty()) return;
@@ -82,6 +88,21 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
 
   if (OpenKlaveMidiBridge.queuedMessages() == 0) return;
 
+#if MPK225_FACTORY_KEYBED
+  // Factory MPK225: bulk IN EP2, 64 bytes, 16 USB-MIDI event packets.
+  // Check endpoint readiness BEFORE removing notes from the queue.
+  const uint32_t bulkMask=__get_PRIMASK();
+  __disable_irq();
+  if (!Mpk225NativeUsb.readyForMidiIn()) {
+    __set_PRIMASK(bulkMask);
+    return;
+  }
+  const mpk225::UsbBulkFrame bulk=OpenKlaveMidiBridge.takeUsbBulkFrame();
+  if (bulk.length>0)
+    (void)Mpk225NativeUsb.submitMidiIn(bulk.bytes,bulk.length);
+  __set_PRIMASK(bulkMask);
+  return;
+#else
   // Protect EP1 status, packet buffer and arming from a concurrent USB reset
   // or transfer-complete interrupt. This critical section is short (<=8 B).
   const uint32_t usbMask = __get_PRIMASK();
@@ -108,13 +129,14 @@ void ConsumeNoteEventStackAndTransmitNotesOverUSB(){
   USBEndpointState state = USBEndpointState{*ep1,0,0,0,NAK,VALID,INTERRUPT,1};
   *ep1 = setEndpointState(state);
   __set_PRIMASK(usbMask);
+#endif
 }
 
 '''
 
 
 def patch_kernel(src: str) -> str:
-    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
+    src = one_replace(src, '#include "kernel.h"', '#include "kernel.h"\n#include "MpkMidiPipeline.h"\n#include "KeybedReferenceDecoder.h"\n#include "Mpk225FactoryKeybedDecoder.h"\n#include "KeybedContactVelocity.h"\n#include "EmbeddedSmartChordController.h"\n#include "Stm32UsbTxGate.h"\n#include "SmartChordDisplay.h"\n#include "Mpk225UsbHardware.h"\nvoid ResetMidiForUsbBus();\nextern "C" void _init(void) {}  // newlib init hook; startup uses __libc_init_array', 'include')
     src = block_replace(src, 'struct Event{', '\nvoid clearScreen(){',
         '#include "OpenKlaveEventQueue.h"\n\n', 'event FIFO')
     src = block_replace(src, 'void ConsumeNoteEventStackAndTransmitNotesOverUSB(){',
@@ -134,6 +156,18 @@ def patch_kernel(src: str) -> str:
   }
 ''',
                         'ack EP1 transfer, no MIDI consumption inside USB ISR')
+    # A separate full-speed composite controller replaces MPK249 USB on
+    # the MPK225 build only, using the user's real descriptor map.
+    src = one_replace(src, 'void usbReset(void){',
+        'void usbReset(void){\n'
+        '#if MPK225_FACTORY_KEYBED\n'
+        '    ResetMidiForUsbBus();\n'
+        '    GPIOD->CRL = 0x88844244; // inherited USB pull-up GPIO, unverified\n'
+        '    GPIOD->BSRR = 4;\n'
+        '    Mpk225NativeUsb.reset();\n'
+        '    return;\n'
+        '#endif',
+        'native MPK225 bus reset')
     # USB reset must leave the MIDI IN endpoint idle/NAK with no phantom
     # four-byte packet. Main loop arms it only when a real MIDI frame exists.
     a = src.index('void usbReset(void){')
@@ -149,6 +183,20 @@ def patch_kernel(src: str) -> str:
     reset = one_replace(reset, 'b->count_tx= 4;', 'b->count_tx= 0;',
                         'EP1 TX empty on USB reset')
     src = src[:a] + reset + src[b:]
+    # The MPK225 must not answer the inherited MPK249 MIDI-only
+    # descriptor requests. Its EP0/EP1/EP2/EP3 interrupts are driven by
+    # Mpk225UsbHardware on the FACTORY_SCAN=1 build.
+    src = one_replace(src, 'void usb(){',
+        'void usb(){\n'
+        '#if MPK225_FACTORY_KEYBED\n'
+        '    if (USB->ISTR & 0x0400u) ResetMidiForUsbBus();\n'
+        '    Mpk225NativeUsb.irq();\n'
+        '    return;\n'
+        '#else',
+        'replace MPK225 USB IRQ service')
+    src = one_replace(src, '\n}\n\nvolatile uint32_t * record =',
+        '\n#endif\n}\n\nvolatile uint32_t * record =',
+        'end of MPK225/native USB split')
     # Akai official v1.02 shared image has EXACTLY 16 bytes at 0x08033800:
     # 41 44 34 41 5F 52 69 63 68 61 72 64 00 01 00 02
     # OpenKlave's upstream token omitted the separator byte (15 bytes).
@@ -348,7 +396,9 @@ def main() -> int:
                  'SmartHarmony.h', 'VoicingPlanner.h', 'KeybedReferenceDecoder.h',
                  'Mpk225FactoryKeybedDecoder.h', 'KeybedContactVelocity.h',
                  'EmbeddedSmartChordController.h', 'Stm32UsbTxGate.h',
-                 'SmartChordDisplay.h'):
+                 'SmartChordDisplay.h', 'Mpk225UsbDescriptors.h',
+                 'Mpk225HidKeyboard.h', 'Mpk225UsbControl.h',
+                 'Mpk225UsbDeviceState.h', 'Mpk225UsbHardware.h'):
         shutil.copy2(includes / name, out / 'src' / name)
     print('Created candidate integration tree:', out)
     print('IMPORTANT: MPK225 timing/velocity curve and USB IRQ still need hardware validation; recovery NOT verified.')
