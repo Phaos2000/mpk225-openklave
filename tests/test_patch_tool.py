@@ -32,6 +32,8 @@ burn:
     mk=(out/'src/Makefile').read_text()
     assert 'OpenKlaveEventQueue.h' in k
     assert 'MpkMidiPipeline.h' in k
+    assert (out/'src/SmartHarmony.h').is_file()
+    assert (out/'src/VoicingPlanner.h').is_file()
     assert 'OpenKlaveMidiBridge.consume' in k
     assert 'GlobalEventStack->scratch_3 = 0;' in k
     assert 'MakeAkaiSysex test.elf' not in mk
