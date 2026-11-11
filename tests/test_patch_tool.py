@@ -42,6 +42,7 @@ burn:
     assert (out/'src/SmartHarmony.h').is_file()
     assert (out/'src/VoicingPlanner.h').is_file()
     assert 'OpenKlaveMidiBridge.consume' in k
+    assert 'extern "C" void _init(void) {}' in k
     for n in ('deviceDescriptor', 'mouseTry', 'mouseHID', 'USBMidi'):
         assert 'static constexpr PMAAllocation ' + n in k
     assert '-nostartfiles -nodefaultlibs' in mk
