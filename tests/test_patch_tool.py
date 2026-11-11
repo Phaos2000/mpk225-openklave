@@ -10,7 +10,18 @@ with tempfile.TemporaryDirectory(prefix='mpk225_patch_test_') as d:
 struct Event{\n};\n
 void clearScreen(){\n}\n
 void ConsumeNoteEventStackAndTransmitNotesOverUSB(){\n}
-void usb(){\n}
+void usb(){
+  if ((USB->ISTR &0b1111) == 1 ){
+    ConsumeNoteEventStackAndTransmitNotesOverUSB();
+    return;
+  }
+  // Check if I need to reset
+}
+void usbReset(void){
+  USBEndpointState state = USBEndpointState{*USB_EP1R,0,0,0,NAK,VALID,INTERRUPT,1};
+  b->count_tx= 4;
+}
+void writeNumberToScreen(uint32_t u){}
 unsigned int decodeMPK249NoteValue(uint32_t u){
   unsigned int map[] = {0,0,60};
   return map[(u&0x0000FF00)>>8];
@@ -29,6 +40,15 @@ constexpr PMAAllocation mouseTry = fixture();
 constexpr PMAAllocation mouseHID = fixture();
 constexpr PMAAllocation USBMidi  = fixture();
 GlobalEventStack->capacity = 100;
+''')
+    (base/'src/main.c').write_text('''#include "kernel.h"
+
+int main(void) {
+  start();
+  while(1){
+
+  }
+}
 ''')
     (base/'src/stm32_flash.ld').write_text('FLASH (rx): ORIGIN = 0x08006000, LENGTH = 256k')
     (base/'src/Makefile').write_text('''CFLAGS += -DSTM32F10X_MD -DUSE_STDPERIPH_DRIVER
@@ -60,9 +80,21 @@ burn:
     assert (out/'src/KeybedContactVelocity.h').is_file()
     assert (out/'src/EmbeddedSmartChordController.h').is_file()
     assert (out/'src/Stm32UsbTxGate.h').is_file()
-    # Frame removal must occur only AFTER endpoint readiness is checked.
-    assert 'if (!mpk225::usbTxBufferReusable(*USB_EP1R))' in k
-    assert k.index('if (!mpk225::usbTxBufferReusable(*USB_EP1R))') < k.index('OpenKlaveMidiBridge.takeUsbFrame()')
+    # A previously idle USB endpoint must be kicked from the main loop,
+    # not require a prior USB transfer. The USB interrupt only acknowledges.
+    main=(out/'src/main.c').read_text()
+    assert 'ConsumeNoteEventStackAndTransmitNotesOverUSB();' in main
+    assert 'if ((USB->ISTR & 0x800Fu) == 0x8001u)' in k
+    usb_handler=k[k.index('void usb(){'):k.index('// Check if I need to reset')]
+    assert 'ConsumeNoteEventStackAndTransmitNotesOverUSB();' not in usb_handler
+    assert 'usbEpCtrAcknowledgeWrite(old)' in usb_handler
+    assert 'if (!mpk225::usbShouldSubmitFrame(*ep1,' in k
+    assert k.index('if (!mpk225::usbShouldSubmitFrame(*ep1,') < k.index('OpenKlaveMidiBridge.takeUsbFrame()')
+    assert 'USB->ISTR = 0' not in k[k.index('void ConsumeNoteEventStackAndTransmitNotesOverUSB(){'):k.index('void usb(){')]
+    assert 'b->count_tx = frame.length;' in k
+    assert 'NAK, NAK, INTERRUPT, 1' in k
+    assert 'b->count_tx= 0;' in k
+    assert '__disable_irq()' in k and '__set_PRIMASK' in k
     assert 'static mpk225::EmbeddedSmartChordController OpenKlaveMidiBridge{};' in k
     assert 'mpk225::contactVelocityFromWord(event)' in k
     assert '#if MPK225_FACTORY_KEYBED' in k
@@ -97,6 +129,7 @@ burn:
     assert 0x08033800 < 0x08034000, 'Boot signature must remain in app partition'
     assert 'struct Event{' in (base/'src/kernel.c').read_text()
     assert not (base/'src'/'ChordEngine.h').exists()
+    assert 'ConsumeNoteEventStackAndTransmitNotesOverUSB();' not in (base/'src/main.c').read_text()
     proc2=run([sys.executable,str(ROOT/'integration/patch_openklave.py'), '--upstream',str(base),'--output',str(out)],capture_output=True,text=True)
     assert proc2.returncode != 0, 'Must refuse overwriting existing output'
     print('PASS: guarded patch fixture, source unchanged, no overwrite, flashing disabled')
