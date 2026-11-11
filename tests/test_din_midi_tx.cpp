@@ -43,7 +43,16 @@ int main() {
     assert(total==6 && packet[0]==0x90 && packet[1]==0x11);
     q.clear();
     assert(!q.pop(byte));
-    static_assert(Mpk225DinUart1::kBrr==0x900,"exact 31.25 kbaud");
+    static_assert(Mpk225DinUart1::kBrr==0x600,"exact 31.25 kbaud from 48MHz PCLK2");
+    static_assert(Mpk225DinUart1::matchesClock(0x51440Au),
+                  "accept pinned 48MHz PLL/USB clock");
+    static_assert(!Mpk225DinUart1::matchesClock(
+                   (0x51440Au & ~0x003C0000u) | (7u<<18)),
+                  "reject 72MHz PLL clock, which needs a different BRR");
+    static_assert(!Mpk225DinUart1::matchesClock(0x51440Au | (1u<<11)),
+                  "reject changed APB2 divider");
+    static_assert(!Mpk225DinUart1::matchesClock(0x51440Au & ~0x00400000u),
+                  "reject USB clock prescaler mismatch");
     // RX-only must not drive the PA9 MIDI OUT pin or enable USART1 TE.
     static_assert(Mpk225DinUart1::gpioAHighConfig(0xFFFFFFFFu,false,true)
                   ==0xFFFFF4FFu,"RX-only preserves PA9 and other GPIO pins");

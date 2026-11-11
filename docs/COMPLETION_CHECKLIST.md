@@ -22,3 +22,5 @@ Model-specific schematics: https://www.manualslib.com/manual/2857215/Akai-Mpk225
 Read-only USB virtual-port mapping tool: py tools\mpk225_usb_probe.py monitor-all --seconds 60 --json mpk225-passive-routing.json. See docs/DIN_ROUTE_PASSIVE_AUDIT.md. Await factory MPK225 results to map MIDI IN cable.
 
 DIN IN experimental software now links on the Cortex-M3: PA10 USART1 RX poll, MIDI status/SysEx/realtime packetization, bounded USB MIDI FIFO and 16-channel recovery after serial loss. Opt-in flags DIN_RX_LAB=1 DIN_RX_USB_CABLE=0..3; defaults disabled. Physical MIDI cable mapping and recovery gates remain OPEN.
+
+**Clock correction (offline):** pinned upstream OpenKlave `src/config/system_stm32f10x.c` writes `RCC->CFGR=0x51440a` overriding its nominal 72 MHz code; for the documented 8 MHz crystal this produces 48 MHz PCLK2. DIN USART1 baud divider is 0x0600 (48 MHz/31,250), with fail-closed runtime clock-register checks. This is a code-path derivation, not a measurement of the owner's MPK225 firmware.

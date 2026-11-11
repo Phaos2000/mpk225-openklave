@@ -2,7 +2,9 @@
 // Experimental MPK225 five-pin MIDI OUT over MCU USART1 PA9 (USB cable
 // assignment is NOT known from schematics). No flashing/SysEx updater.
 // Akai MPK225 service schematic pp.30-31: MIDI_TX -> USART1_TX PA9 ->
-// jack J5; crystal 8MHz. OpenKlave STM32 startup: PCLK2=72MHz.
+// jack J5; crystal 8MHz. OpenKlave's pinned system_stm32f10x.c
+// explicitly overrides nominal 72 MHz startup with RCC_CFGR=0x51440A.
+// HSE * 6, AHB /1, APB2 /1 => USART1 PCLK2 is 48 MHz, not 72 MHz.
 #include "Mpk225HostMidiQueue.h"
 #include <stdint.h>
 
@@ -60,11 +62,21 @@ private:
 // model-1 DIN lab builds; it never remaps pins or changes option bytes.
 class Mpk225DinUart1 {
 public:
-    static constexpr uint32_t kPclk2=72000000u;
+    static constexpr uint32_t kPclk2=48000000u;
     static constexpr uint32_t kBaud=31250u;
-    static constexpr uint16_t kBrr=0x0900u; // exact 72MHz / 31250
+    static constexpr uint16_t kBrr=0x0600u; // exact 48MHz / 31250
     static_assert(kPclk2/kBaud==kBrr && kPclk2%kBaud==0,
                   "31.25-kbaud MIDI UART divider");
+    // Validate PLL source/multiplier, bus prescalers, active system clock,
+    // and USB prescaler against pinned OpenKlave startup before enabling
+    // any UART pin. A nominal 72MHz build must not use our 48MHz divider.
+    static constexpr uint32_t kClockMask =
+        0x0000000Fu | 0x000000F0u | 0x00003800u |
+        0x00010000u | 0x00020000u | 0x003C0000u | 0x00400000u;
+    static constexpr bool matchesClock(uint32_t cfgr) {
+        return (cfgr & kClockMask)==(0x0051440Au & kClockMask);
+    }
+    static_assert(matchesClock(0x0051440Au),"match pinned OpenKlave clock");
     bool ready() const { return ready_; }
     uint32_t receiveErrors() const { return receiveErrors_; }
     // PA9 stays in its original GPIO state in RX-only lab configurations.
@@ -88,8 +100,7 @@ public:
     bool init(bool enableTx,bool enableRx) {
         if(!enableTx && !enableRx) return false;
         const uint32_t clock=reg(0x40021004u); // RCC_CFGR
-        if((clock&0x0000000Cu)!=0x00000008u || // SWS=PLL
-           (clock&0x00003800u)!=0) return false; // PPRE2=DIV1
+        if(!matchesClock(clock)) return false; // fail closed on clock change
         reg(0x40021018u)|=(1u<<0)|(1u<<2)|(1u<<14); // AFIO GPIOA USART1
         if(reg(0x40010004u)&(1u<<2)) return false; // USART1 remap forbidden
         volatile uint32_t& crh=reg(0x40010804u); // GPIOA CRH
