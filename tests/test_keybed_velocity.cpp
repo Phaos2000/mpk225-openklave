@@ -31,6 +31,18 @@ int main() {
     assert(contactVelocity(65535) == 1);
     assert(contactVelocity(256,{512,64,95}) == 127);
     assert(contactVelocity(0,{512,64,95}) == 95);
+    // Real Akai key-class code: 0xAB5 selects C/D/E/F/G/A/B; distinguish
+    // white and black key response coefficients without dynamic allocations.
+    ContactVelocitySettings split{256,64,100,512};
+    for (unsigned i=0;i<128;++i) {
+        const bool expected=(0xAB5u & (1u << (i%12u))) != 0;
+        assert(isWhitePianoKey(static_cast<uint8_t>(i))==expected);
+        const auto v=contactVelocityForNote(512,static_cast<uint8_t>(i),split);
+        assert(v==(expected ? 32 : 64));
+    }
+    assert(contactVelocityFromWordForNote(packet(0xFF,0x40,512),60,split)==32);
+    assert(contactVelocityFromWordForNote(packet(0xFF,0x41,512),61,split)==64);
+    assert(contactVelocityForNote(512,128,split)==100);
 
     // Validate UART word extraction (little-endian low scan/status bytes,
     // high two bytes carrying the factory contact timer).
@@ -85,5 +97,5 @@ int main() {
         }
     }
     assert(noteOffs==5);
-    std::puts("PASS: 65,535 contact intervals monotonic; MPK225 middle C responds to timing; 5-voice MIDI velocities and releases");
+    std::puts("PASS: 65,535 contact intervals monotonic; factory white/black classification; note-specific velocity and 5-voice releases");
 }
