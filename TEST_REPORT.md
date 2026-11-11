@@ -1,31 +1,44 @@
-# MPK225 Jazz Chord Engine v0.2 — test evidence
+# Host test report — smart chord milestone v0.3
 
-Date: 2026-11-10
+**2026-11-10.** Tested on local Linux x64 with GCC C++17. No MPK225 USB or firmware flash operations performed.
 
-Test environment: local x86-64 Linux GCC and Clang; no MPK225 connection. Target is C++17 freestanding Cortex-M3 for the isolated modules, not a full flashed firmware.
+## Functional result
 
-| Validation | Observed result |
+- **49** fixed chord voicings, **588** chromatic-root/chord combinations, **12** scale modes.
+- Full deterministic enumeration; strict scale-membership, borrowed-chord and unrestricted filters; stable bounded top-N ranking.
+- Chord pitches retain per-key note ownership. MIDI note-on/off traffic is ordered correctly, including planned inversion changes on a held trigger key.
+- `VoicingPlanner.h` chooses octave/inversion candidates using actual MIDI note numbers and minimized ordered voice displacement. Cmaj7 `[60,64,67,71]` to Fmaj7 `[60,64,65,69]` costs **four semitones** in the tested range.
+- `SmartHarmony.h` is a pure stateless query utility; `VoicingPlanner.h` is stateless too. Neither allocates heap memory.
+
+## Executed checks — all passed
+
+| Test | Evidence |
 |---|---|
-| Existing chord-engine suites | PASS — 7 suites, 200,000 deterministic reference-model operations, 24 chord types |
-| MIDI pipeline | PASS — 6 suites, 200,000 deterministic events; chord selection, raw-note passthrough, pad and CC formatting, overlaps, queue backpressure |
-| Legacy FIFO | PASS — FIFO ordering/wrap, 200,000 operations, legacy constexpr compatibility |
-| MIDI end-to-end | PASS — 1, 25 and 50 key presses/releases; 50-key case: 128 emitted USB-MIDI messages in 64 8-byte frames, 4 input queue stalls, 0 stuck notes |
-| Guarded patch tool | PASS — synthetic upstream fixture patched to new directory, original unchanged, `burn` disabled, refuses overwrite |
-| Address/UB sanitizer | PASS — chord, pipeline, and FIFO C++ tests with ASan + UBSan |
-| ARM compiler | PASS — Clang 17 `--target=arm-none-eabi -mcpu=cortex-m3 -mthumb -ffreestanding` generated ELF32 ARM relocatable object from `arm_compile.cpp` |
-| Main Cortex-M3 object size (probe only) | 3,048 bytes text + 1,460 bytes data, zero BSS; sizes vary with optimization and code referenced |
-| ChordEngine host object size | 1,025 bytes |
-| MpkMidiPipeline host object size | 1,480 bytes |
-| EventStack | 1,616 bytes of RAM, within the isolated 0xB00-byte region assumed by upstream MPK249 source |
+| `tests/test_chord_engine.cpp` | 7 suites, 200,000 randomized operations; 49 chord types; chord engine = 1,025 bytes |
+| `tests/test_midi_pipeline.cpp` | 6 suites, 200,000 events; output queue and backpressure; pipeline = 1,480 bytes |
+| `tests/test_openklave_fifo.cpp` | 200,000 FIFO operations, wrap and ordering |
+| `tests/test_end_to_end.cpp` | 1/25/50 key scenarios, 4 backpressure stalls in the 50-key case, valid USB-MIDI packets |
+| `tests/test_smart_harmony.cpp` | 73 strictly diatonic C-major options, all 588 unrestricted options, all key transpositions/modes, 20,000 randomized deterministic query comparisons |
+| `tests/test_harmony_to_midi.cpp` | G7 recommendation played as four note-ons and four note-offs, correct note ownership |
+| `tests/test_voicing_planner.cpp` | All 588 chord/root combinations maintain their pitch-class identity and stay within register; four-semitone Cmaj7→Fmaj7 case |
+| `tests/test_voiced_playback.cpp` | Planned Cmaj7→Fmaj7 retrigger, sixteen ordered MIDI events, final key-up without stuck notes |
+| `tests/test_patch_tool.py` | Source-preserving generated tree; correct 184 KiB linker boundary; new harmony/voicing headers copied; firmware flashing disabled |
+| Clang Cortex-M3 object | `tests/arm_smart.cpp` compiled for `armv7m-none-eabi -mcpu=cortex-m3 -mthumb` |
 
-### Not validated
+GCC `-fsanitize=address,undefined` completed successfully on the four new musical tests (suggestions, voicing planner, G7 MIDI and inverted MIDI playback).
 
-- No real MPK225 firmware build and no ARM GCC full project linking. The patch script was tested against a fixture, not the full upstream tree.
-- No USB peripheral IRQ correctness, real endpoint/DMA timing, keybed velocity mapping, encoder/button behavior, SysEx, flash layout readback or factory-firmware recovery.
-- No Windows machine/hardware connection or Windows/MSVC host test execution.
-- The upstream event FIFO's interrupt race/overflow strategy is NOT production ready. A failing incoming event queue enters a safe *fail-stop* loop, but this is unacceptable for live playing.
-- MIDI output reference counting covers overlapping chords, not interactions with separate pad/raw MIDI streams sharing channel/note.
+## Important limits
 
-### Safety
+This is **not** a full ARM firmware build or USB device test. The OpenKlave bridge still relies on MPK249-era keybed/USB assumptions; MPK225-specific key scanning, UI, button mapping, recovery and flash write protection remain unresolved. Hardware flashing is forbidden in the candidate integration tree.
 
-This package intentionally contains **no flashing executable**, no generated `.syx` and no instructions to erase the OS. Do not install on the hardware until an independent recovery procedure has been confirmed.
+Compatibility examines **voiced tones only**, not complete chord spellings or harmonic function. Suggestion scoring uses common pitch classes, scale membership and a pitch-class motion approximation. The later `VoicingPlanner` uses actual note-level movement but searches a bounded family of inversions, **not every possible voicing**. Neither module yet implements formal chord-function substitutions.
+
+## Reproduce
+
+```sh
+for test in test_chord_engine test_midi_pipeline test_openklave_fifo test_end_to_end test_smart_harmony test_harmony_to_midi test_voicing_planner test_voiced_playback; do
+  g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude tests/$test.cpp -o /tmp/$test && /tmp/$test
+done
+python3 tests/test_patch_tool.py
+clang++ -target armv7m-none-eabi -mcpu=cortex-m3 -mthumb -std=c++17 -fno-rtti -fno-exceptions -ffreestanding -O2 -Iinclude -c tests/arm_smart.cpp -o /tmp/arm_smart.o
+```
