@@ -163,6 +163,105 @@ def describe_midi(message: list[int]) -> str:
     return "OTHER_MIDI status=" + hex(status) + " bytes=" + str(len(message))
 
 
+
+def matched_input_indices(ports: list[str], name: str = "MPK225") -> list[tuple[int, str]]:
+    """Select actual WinMM input ports by display name, never output ports."""
+    if not name or not name.strip():
+        raise ValueError("--match must contain a device name")
+    key = name.casefold()
+    return [(i, label) for i, label in enumerate(ports) if key in label.casefold()]
+
+
+def classify_note_message(message: list[int]) -> str:
+    if len(message) >= 3 and (message[0] & 0xF0) == 0x90 and message[2] != 0:
+        return "note_on"
+    if len(message) >= 3 and ((message[0] & 0xF0) == 0x80 or
+                             ((message[0] & 0xF0) == 0x90 and message[2] == 0)):
+        return "note_off"
+    return "other"
+
+
+def monitor_all_inputs(seconds: int, match: str = "MPK225",
+                       output: Path | None = None,
+                       *, clock=None, pause=None) -> int:
+    """Read-only, simultaneous passive monitor for factory USB virtual ports.
+
+    Opens MIDI INPUTS only. Does not send SysEx, MIDI, firmware commands, or
+    device inquiries. A printed port assignment is observational evidence,
+    not a verified hardware cable-number or DIN-transceiver mapping.
+    """
+    if seconds < 1 or seconds > 600:
+        raise ValueError("duration must be 1..600 seconds")
+    clock = clock or time.monotonic
+    pause = pause or time.sleep
+    try:
+        prototype, ports = available_input_ports()
+    except RuntimeError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    selections = matched_input_indices(ports, match)
+    client_type = type(prototype)
+    del prototype
+    if not selections:
+        print("No matching MIDI inputs. Use midi-ports to inspect names; "
+              "choose --match TEXT to narrow the selection.", file=sys.stderr)
+        return 2
+    handles = []
+    events = []
+    dropped = 0
+    summary = {str(i): {"name": name, "note_on": 0, "note_off": 0, "other": 0}
+               for i, name in selections}
+    try:
+        for index, name in selections:
+            handle = client_type()
+            handles.append(handle)  # close even if open_port raises
+            handle.open_port(index)
+            handle.ignore_types(sysex=True, timing=True, active_sense=True)
+            print(f"Monitoring MIDI input {index}: {name}")
+        print("All ports are input-only. No MIDI output and no SysEx "
+              "transmission; stop with Ctrl+C.")
+        start = clock()
+        while clock() - start < seconds:
+            got = False
+            for (index, name), handle in zip(selections, handles):
+                packet = handle.get_message()
+                if packet is None:
+                    continue
+                got = True
+                message, _delta = packet
+                if not message:
+                    continue
+                category = classify_note_message(message)
+                summary[str(index)][category] += 1
+                at = round(clock() - start, 3)
+                print(f"{at:8.3f}s port={index} {name}: {describe_midi(message)}")
+                if len(events) < 5000:
+                    events.append({"seconds": at, "port_index": index,
+                                   "message": list(message), "type": category})
+                else:
+                    dropped += 1
+            if not got:
+                pause(0.005)
+    except KeyboardInterrupt:
+        print("Stopped")
+    finally:
+        for handle in handles:
+            handle.close_port()
+    report = {"device": "MPK225", "mode": "passive multi-input",
+              "match": match, "seconds_requested": seconds,
+              "ports": summary, "events": events,
+              "events_omitted_after_5000": dropped,
+              "outputs_opened": 0, "device_modified": False}
+    print("Per-port note-on/note-off counts:")
+    for index, s in summary.items():
+        print(f"  {index}: {s['name']}: ON {s['note_on']} / "
+              f"OFF {s['note_off']} / other {s['other']}")
+    if output is not None:
+        output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(f"Sanitized passive MIDI audit saved to {output}")
+    return 0
+
+
 def monitor(port_index: int | None, seconds: int) -> int:
     try:
         midi_in, ports = available_input_ports()
@@ -210,6 +309,13 @@ def main(argv: list[str] | None = None) -> int:
     pm = sub.add_parser("monitor", help="Passively display received MIDI; no MIDI output")
     pm.add_argument("--port", type=int, default=None, help="Select an input MIDI port by index")
     pm.add_argument("--seconds", type=int, default=20)
+    pa = sub.add_parser("monitor-all",
+                        help="Observe all matching MIDI inputs simultaneously, never transmit")
+    pa.add_argument("--seconds", type=int, default=30)
+    pa.add_argument("--match", default="MPK225",
+                    help="Case-insensitive input port name substring (default MPK225)")
+    pa.add_argument("--json", type=Path, default=None,
+                    help="Optional sanitized JSON audit, at most 5000 events")
     args = parser.parse_args(argv)
     if args.action == "inventory":
         return inventory(args.vid_pid, args.json)
@@ -217,6 +323,10 @@ def main(argv: list[str] | None = None) -> int:
         return midi_ports()
     if args.seconds < 1 or args.seconds > 600:
         parser.error("--seconds must be between 1 and 600")
+    if args.action == "monitor-all":
+        if not args.match.strip():
+            parser.error("--match must include a nonblank input name")
+        return monitor_all_inputs(args.seconds, args.match, args.json)
     return monitor(args.port, args.seconds)
 
 

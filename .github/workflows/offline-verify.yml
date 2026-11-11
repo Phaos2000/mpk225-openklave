@@ -26,6 +26,7 @@ jobs:
           done
           python3 tests/test_patch_tool.py
           python3 tests/test_elf_guard.py
+          python3 tests/test_usb_probe.py
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 tests/test_chord_boot_variant.cpp -o /tmp/test_chord_boot_enabled
           /tmp/test_chord_boot_enabled
           g++ -std=c++17 -O2 -Wall -Wextra -Werror -pedantic -Iinclude -DMPK225_CANDIDATE_CHORD_ON_BOOT=1 -DMPK225_CANDIDATE_SMART_ON_BOOT=1 tests/test_embedded_smart.cpp -o /tmp/test_smart_embedded
