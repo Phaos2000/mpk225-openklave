@@ -26,11 +26,13 @@ public:
         requested_=0; sent_=0; needZlp_=false;
         current_=UsbDescriptorView{};
         protocol_=1; idle_=0; leds_=0;
+        ++configurationEpoch_; // all previous transfers belong to old bus
         hid_.clear();
     }
     UsbDeviceState() { busReset(); }
     uint8_t address() const { return address_; }
     uint8_t configuration() const { return configuration_; }
+    uint32_t configurationEpoch() const { return configurationEpoch_; }
     bool configured() const { return configuration_==13; }
     uint8_t ledOutput() const { return leds_; }
     uint8_t protocol() const { return protocol_; }
@@ -144,7 +146,10 @@ public:
         } else if (stage_==ControlStage::StatusIn) {
             switch (pendingAction_) {
                 case 1: address_=pendingAddress_; break;
-                case 2: configuration_=pendingConfiguration_; break;
+                case 2:
+                    configuration_=pendingConfiguration_;
+                    ++configurationEpoch_; // even repeat SET_CONFIGURATION(13)
+                    break;
                 case 3: idle_=pendingIdle_; break;
                 case 4: protocol_=pendingProtocol_; break;
             }
@@ -178,6 +183,7 @@ private:
     bool needZlp_=false;
     uint8_t scratch_[8]{};
     uint8_t address_=0, configuration_=0;
+    uint32_t configurationEpoch_=0;
     uint8_t pendingAddress_=0, pendingConfiguration_=0;
     uint8_t pendingAction_=0;
     uint8_t idle_=0,protocol_=1,leds_=0,pendingIdle_=0,pendingProtocol_=1;

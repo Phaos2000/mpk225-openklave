@@ -38,6 +38,8 @@ static uint8_t dataByte(UsbDeviceState& usb,UsbSetupRequest req) {
 int main() {
     UsbDeviceState usb;
     assert(!usb.address() && !usb.configuration() && !usb.configured());
+    const uint32_t initialEpoch=usb.configurationEpoch();
+    assert(initialEpoch!=0);
     assert(getDescriptor(usb,{0x80,6,0x0100,0,18},18)==3);
     assert(getDescriptor(usb,{0x80,6,0x0200,0,169},169)==22);
     assert(getDescriptor(usb,{0x81,6,0x2200,2,63},63)==8);
@@ -51,6 +53,17 @@ int main() {
     assert(usb.setup({0x00,9,13,0,0}));
     assert(!usb.configured());
     statusIn(usb);assert(usb.configured());
+    assert(usb.configurationEpoch()==initialEpoch+1);
+    // Re-applying configuration 13 must invalidate stale host MIDI too.
+    assert(usb.setup({0x00,9,13,0,0}));
+    statusIn(usb);
+    assert(usb.configurationEpoch()==initialEpoch+2);
+    assert(usb.setup({0x00,9,0,0,0}));
+    statusIn(usb);assert(!usb.configured());
+    assert(usb.configurationEpoch()==initialEpoch+3);
+    assert(usb.setup({0x00,9,13,0,0}));
+    statusIn(usb);assert(usb.configured());
+    assert(usb.configurationEpoch()==initialEpoch+4);
     assert(dataByte(usb,{0x80,8,0,0,1})==13);
     assert(dataByte(usb,{0x81,10,0,2,1})==0);
 
@@ -101,7 +114,9 @@ int main() {
         assert(getDescriptor(usb,{0x80,6,0x0200,0,static_cast<uint16_t>(n)},n)
                ==((n+7)/8));
     }
+    const auto beforeReset=usb.configurationEpoch();
     usb.busReset();
+    assert(usb.configurationEpoch()==beforeReset+1);
     assert(usb.address()==0 && usb.configuration()==0 && usb.idleRate()==0);
     assert(usb.protocol()==1 && usb.ledOutput()==0);
     assert(usb.hidKeys().report().keys[0]==0);

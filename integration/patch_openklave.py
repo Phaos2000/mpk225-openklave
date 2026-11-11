@@ -191,8 +191,13 @@ def patch_kernel(src: str) -> str:
     src = one_replace(src, 'void usb(){',
         'void usb(){\n'
         '#if MPK225_FACTORY_KEYBED\n'
-        '    if (USB->ISTR & 0x0400u) ResetMidiForUsbBus();\n'
+        '    static uint32_t lastUsbConfigurationEpoch = 0;\n'
         '    Mpk225NativeUsb.irq();\n'
+        '    const uint32_t epoch=Mpk225NativeUsb.configurationEpoch();\n'
+        '    if (epoch!=lastUsbConfigurationEpoch) {\n'
+        '        lastUsbConfigurationEpoch=epoch;\n'
+        '        ResetMidiForUsbBus();\n'
+        '    }\n'
         '    return;\n'
         '#else',
         'replace MPK225 USB IRQ service')

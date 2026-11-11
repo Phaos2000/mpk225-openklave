@@ -106,6 +106,9 @@ burn:
     assert 'static mpk225::Mpk225UsbHardware Mpk225NativeUsb{};' in k
     assert 'Mpk225NativeUsb.irq();' in k
     assert 'Mpk225NativeUsb.reset();' in k
+    assert 'lastUsbConfigurationEpoch=epoch;' in k
+    assert 'epoch!=lastUsbConfigurationEpoch' in k
+    assert k.index('Mpk225NativeUsb.irq();') < k.index('lastUsbConfigurationEpoch=epoch;') < k.index('ResetMidiForUsbBus();',k.index('lastUsbConfigurationEpoch=epoch;'))
     assert 'Mpk225NativeUsb.submitMidiIn(bulk.bytes,bulk.length)' in k
     assert 'OpenKlaveMidiBridge.takeUsbBulkFrame();' in k
     assert 'Mpk225NativeUsb.submitHidIn();' in k

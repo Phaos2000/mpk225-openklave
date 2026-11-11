@@ -56,6 +56,7 @@ public:
                   "EP1 OUT must allocate a real 64-byte PMA receive buffer");
     static_assert(kPmaEp3Tx+8<=0x200,"PMA exceeds STM32 FS 512-byte allocation");
     bool configured() const { return control_.configured(); }
+    uint32_t configurationEpoch() const { return control_.configurationEpoch(); }
     bool readyForMidiIn() const {
         return configured() && ((ep(2)&0x80B0u)==0x0020u);
     }
@@ -250,20 +251,26 @@ private:
         }
     }
     void controlTxCompleted() {
+        const uint32_t wasEpoch=control_.configurationEpoch();
         control_.inAcknowledged();
         if(control_.stage()==ControlStage::DataIn)
             armControlNext();
         else setEndpoint(0,3,2);
         // Address must be committed only after SET_ADDRESS status IN ACK.
         reg(0x4C)=static_cast<uint16_t>(0x80u|control_.address());
-        if(control_.configured() && !endpointsEnabled_) {
-            endpointsEnabled_=true;
-            setEndpoint(1,3,0); // bulk EP1 OUT RX VALID
-        } else if(!control_.configured() && endpointsEnabled_) {
+        if(control_.configurationEpoch()!=wasEpoch) {
+            // SET_CONFIGURATION (including a repeated value) resets all
+            // non-control endpoint traffic, not just their readiness.
+            hostHead_=hostTail_=hostCount_=0;
+            ep1Pending_=false;
             endpointsEnabled_=false;
-            setEndpoint(1,2,0);
+            setEndpoint(1,2,0); // disable/NAK all stale traffic first
             setEndpoint(2,0,2);
             setEndpoint(3,0,2);
+            if(control_.configured()) {
+                endpointsEnabled_=true;
+                setEndpoint(1,3,0); // EP1 OUT ready for new configuration
+            }
         }
     }
     void hostMidiReceived() {
