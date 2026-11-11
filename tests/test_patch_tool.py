@@ -18,6 +18,8 @@ unsigned int decodeMPK249NoteValue(uint32_t u){
 void CheckKeyBed(){
   uint32_t event = 0;
   uint32_t val = (decodeMPK249NoteValue(event));
+  uint32_t velocity = 100;
+  Event e = {0xFF,100,val,0};
   if ((event & 0x000000FF) == 0xFE){
     consume(val);
   }
@@ -55,6 +57,12 @@ burn:
     assert (out/'src/Mpk225FactoryKeybedDecoder.h').is_file()
     assert '#if MPK225_FACTORY_KEYBED' in k
     assert 'decodeMpk225FactoryScan(event)' in k
+    assert (out/'src/KeybedContactVelocity.h').is_file()
+    assert 'mpk225::contactVelocityFromWord(event)' in k
+    assert '#if MPK225_FACTORY_KEYBED' in k
+    assert 'Event e = {0xFF,velocity,val,0};' in k
+    assert 'Event e = {0xFF,100,val,0};' not in k
+    assert 'e = {0xFE,0,val,0}' in k or 'consume(val)' in k
     assert 'decodeMpk249ReferenceScan(event)' in k
     assert 'if (!decoded.valid) return;' in k
     assert 'if (!decoded.down)' in k
