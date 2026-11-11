@@ -23,10 +23,24 @@ The executable uses Windows' built-in **WinMM MIDI API**; no Python needed. It d
 
 The program chords all note events on the selected input MIDI channel (default 1). If your pads transmit on the same channel as the keyboard, pads will also trigger chords. Set pads to a separate channel in the Akai factory preset or leave them unused for this test. Other channel-voice MIDI (pitch wheel, CC, notes on other channels) passes through unchanged.
 
+## Optional live smart-chord mode
+
+The same executable also supports an **opt-in** scale-aware mode with the actual `SmartHarmony` and `VoicingPlanner` code:
+
+```bat
+MPK225-Live-Chords.exe --input 0 --output 1 --smart --tonic C --scale major
+```
+
+Substitute the real MIDI input/output indices from `--list`. Default is still fixed-chord mode. With `--smart`, each played key is treated as a proposed **root** and the program selects a compatible chord quality from the library, then plans MIDI pitches near the pressed key with approximate minimal voice movement from the previous selected voicing. The console reports each choice. Scale choices include `major`, `minor`, `dorian`, `phrygian`, `lydian`, `mixolydian`, `locrian`, `harmonic-minor`, `melodic-minor`, `major-pentatonic`, `minor-pentatonic`, and `chromatic`. Tonic examples: `C`, `F#`, `Bb`.
+
+Filters: `--filter strict` (default, all voiced notes in the scale), `--filter borrowed` (root in scale, up to two notes outside) or `--filter any` (all defined chords). An out-of-scale pressed root in strict mode plays a **single unchanged note**, never silence. The previous voicing is remembered even after releasing the previous key, so the next chord can minimize voice movement. In contrast, the individual MIDI notes currently held are tracked separately to guarantee correct note-offs.
+
+This mode is **a transparent rule-based heuristic**, not complete harmonic intelligence: it does not infer a song's harmonic function or distinguish common jazz substitutions contextually. Test it as an audible proof of key/scale recognition and actual MIDI voicings.
+
 ## Limitations / acceptance checklist
 
 - Source: `tools/mpk225_live_chords_win.cpp`; same `ChordEngine.h` as embedded prototype, but Windows handles MIDI transport.
-- Chord type is selected at launch (`--chord maj7`, `--chord m9`, `--chord 7#9`, etc.). `--chord invalid` lists available names. This is a **simple one-finger test**, not the final smart recommendation/control UI.
+- In fixed mode the chord type is selected at launch (`--chord maj7`, `--chord m9`, `--chord 7#9`, etc.). `--chord invalid` lists available names. Smart mode is experimental and the final hardware LCD recommendation/control UI remains unfinished.
 - The executable's no-device `--selftest` runs in CI. Actual MPK225/DAW latency, MIDI routing, pads, Note Off and Ctrl+C shutdown must be confirmed by the owner.
 - The tool will send **only channel-voice short MIDI messages** to the explicitly chosen output, never firmware commands.
 - If a DAW has opened the keyboard's WinMM input exclusively, close that input before starting the bridge.
