@@ -75,7 +75,7 @@ jobs:
           fi
           arm-none-eabi-size /tmp/led-mpk225-smart-not-installable.elf
           sha256sum /tmp/led-mpk225-smart-not-installable.elf
-          arm-none-eabi-objcopy --dump-section .mySection=/tmp/mpk225-boot-signature.bin /tmp/led-mpk225-smart-not-installable.elf
+          arm-none-eabi-objcopy --dump-section .mySegment=/tmp/mpk225-boot-signature.bin /tmp/led-mpk225-smart-not-installable.elf
           python3 -c 'from pathlib import Path; sig=Path("/tmp/mpk225-boot-signature.bin").read_bytes(); assert sig==bytes.fromhex("414434415f5269636861726400010002"), "Boot signature does not match official Akai v1.02 16-byte token"'
       - name: Verify firmware release actions remain disabled
         run: |
